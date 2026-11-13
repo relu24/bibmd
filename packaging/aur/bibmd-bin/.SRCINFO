@@ -1,0 +1,23 @@
+pkgbase = bibmd-bin
+	pkgdesc = A zen Markdown reader that edits a block in place when it is clicked (Wayland)
+	pkgver = 0.1.2
+	pkgrel = 1
+	url = https://github.com/relu24/bibmd-releases
+	arch = x86_64
+	license = MIT
+	license = OFL-1.1
+	depends = glibc
+	depends = wayland
+	depends = libxkbcommon
+	depends = freetype2
+	depends = harfbuzz
+	depends = fontconfig
+	optdepends = noto-fonts-emoji: colour emoji
+	provides = bibmd
+	conflicts = bibmd
+	options = !strip
+	options = !debug
+	source = bibmd-0.1.2-x86_64.tar.gz::https://github.com/relu24/bibmd-releases/releases/download/v0.1.2/bibmd-0.1.2-x86_64.tar.gz
+	sha256sums = e542ea4cb724213e6603ddc416fbc9d188d329caf38514d967860e3eee7a8eb4
+
+pkgname = bibmd-bin

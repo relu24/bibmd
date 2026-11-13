@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>bibmd</title>
+  <style>
+    :root { --ground: #161412; --ink: #DAD6D0; --faint: #8a847c; --line: #2c2824; color-scheme: dark; }
+    @media (prefers-color-scheme: light) {
+      :root { --ground: #fbfaf8; --ink: #24211e; --faint: #8a847c; --line: #e4e0da; color-scheme: light; }
+    }
+    html, body { margin: 0; height: 100%; background: var(--ground); overflow: hidden; }
+    #bibmd { display: block; width: 100vw; height: 100vh; outline: none; touch-action: pan-y; }
+    #veil {
+      position: fixed; inset: 0; display: grid; place-items: center; background: var(--ground);
+      color: var(--ink); font: 15px/1.6 ui-serif, Georgia, serif; transition: opacity .35s ease;
+    }
+    #veil.gone { opacity: 0; pointer-events: none; }
+    #veil .word { font: 600 13px/1 ui-monospace, monospace; letter-spacing: .3em; text-transform: uppercase; color: var(--faint); }
+    #veil .word::after { content: ""; display: block; height: 1px; margin-top: 14px; background: var(--faint);
+      transform-origin: left; animation: read 1.4s ease-in-out infinite; }
+    #veil p { max-width: 34em; margin: 18px 0 0; color: var(--faint); }
+    #veil.failed .word::after { animation: none; transform: scaleX(1); background: #c46a5a; }
+    @keyframes read { 0% { transform: scaleX(0); } 60% { transform: scaleX(1); } 100% { transform: scaleX(1); opacity: 0; } }
+    #drop {
+      position: fixed; inset: 14px; border: 1.5px dashed var(--faint); border-radius: 10px; display: grid;
+      place-items: center; color: var(--ink); font: 600 13px/1 ui-monospace, monospace; letter-spacing: .2em;
+      text-transform: uppercase; background: color-mix(in srgb, var(--ground) 82%, transparent);
+      opacity: 0; pointer-events: none; transition: opacity .15s ease;
+    }
+    body.dragging #drop { opacity: 1; }
+  </style>
+</head>
+<body>
+  <canvas id="bibmd" tabindex="0"></canvas>
+  <div id="veil"><div><div class="word">bibmd</div><p id="note"></p></div></div>
+  <div id="drop">Drop a Markdown file to read it</div>
+  <input id="pick" type="file" accept=".md,.markdown,.txt,text/markdown,image/*" multiple hidden>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

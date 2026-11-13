@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- bibmd: a zen Markdown reader that edits a block in place when it is clicked.
+       Wayland + the managed rasterizer, so it publishes as one Native AOT binary:
+         dotnet publish -c Release -o out   (then put out/bibmd on the PATH as `md`) -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>bibmd</AssemblyName>
+    <RootNamespace>BibMd</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <PublishAot>true</PublishAot>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <IsPackable>false</IsPackable>
+    <BibuiVersion>1.2.0</BibuiVersion>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- The bib document language, from a checkout of the bibdoc repository beside this one;
+         -p:BibDocRoot=<checkout> to build against another. -->
+    <BibDocRoot Condition="'$(BibDocRoot)' == ''">$(MSBuildThisFileDirectory)../bibdoc</BibDocRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(BibDocRoot)/src/BibDoc/BibDoc.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The AOT compiler and runtime from 10.0.14 on: the SDK's own (10.0.11 with SDK 10.0.111)
+         has the Brotli decoder flaw of GHSA-p3jp-9v83-76w9, which fails the restore. Drop this
+         once the installed SDK brings 10.0.14 or later. -->
+    <KnownILCompilerPack Update="Microsoft.DotNet.ILCompiler">
+      <ILCompilerPackVersion Condition="'%(TargetFramework)' == 'net10.0'">10.0.15</ILCompilerPackVersion>
+    </KnownILCompilerPack>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The web viewer is its own project, which compiles these sources in its turn. -->
+    <Compile Remove="web/**" />
+    <None Remove="web/**" />
+    <Content Remove="web/**" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The editor's monospaced face (iA Writer Mono S, OFL: assets/fonts/OFL.txt), in the binary. -->
+    <EmbeddedResource Include="assets/fonts/*.ttf" LogicalName="%(Filename)%(Extension)" />
+  </ItemGroup>
+  <PropertyGroup>
+    <!-- bibui's integration branch (github.com/relu24/bibui), checked out beside this one as
+         ../bibui-bib-agent: bibui 1.2 and changes not yet released, among them Markdown text that can
+         be selected and copied. With no checkout there, the nuget.org release is used, without selection.
+         -p:BibuiSource=<checkout> builds against another. -->
+    <BibuiSource Condition="'$(BibuiSource)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../bibui-bib-agent'))</BibuiSource>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(BibuiSource)/bibui-core/bibui-core.csproj')">
+    <ProjectReference Include="$(BibuiSource)/bibui-core/bibui-core.csproj" />
+    <ProjectReference Include="$(BibuiSource)/bibui-platform-wayland/bibui-platform-wayland.csproj" />
+    <ProjectReference Include="$(BibuiSource)/bibui-raster-managed/backend/Bibui.Raster.Managed.Backend.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="!Exists('$(BibuiSource)/bibui-core/bibui-core.csproj')">
+    <PackageReference Include="Bibui.Core" Version="[$(BibuiVersion)]" />
+    <PackageReference Include="Bibui.Platform.Wayland" Version="[$(BibuiVersion)]" />
+    <PackageReference Include="Bibui.Raster.Managed.Backend" Version="[$(BibuiVersion)]" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,26 @@
+# Maintainer: Daniel Madsen <daniel.christian.madsen@gmail.com>
+pkgname=bibmd-bin
+pkgver=0.1.2
+pkgrel=1
+pkgdesc="A zen Markdown reader that edits a block in place when it is clicked (Wayland)"
+arch=('x86_64')
+url="https://github.com/relu24/bibmd-releases"
+license=('MIT' 'OFL-1.1')
+# Native AOT: no .NET runtime. These are loaded at run time (dlopen), so ldd does not show them.
+depends=('glibc' 'wayland' 'libxkbcommon' 'freetype2' 'harfbuzz' 'fontconfig')
+optdepends=('noto-fonts-emoji: colour emoji')
+provides=('bibmd')
+conflicts=('bibmd')
+options=('!strip' '!debug')
+source=("bibmd-$pkgver-x86_64.tar.gz::$url/releases/download/v$pkgver/bibmd-$pkgver-x86_64.tar.gz")
+sha256sums=('e542ea4cb724213e6603ddc416fbc9d188d329caf38514d967860e3eee7a8eb4')
+
+package() {
+    cd "bibmd-$pkgver-x86_64"
+    install -Dm755 bibmd "$pkgdir/usr/bin/bibmd"
+    ln -s bibmd "$pkgdir/usr/bin/md"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/bibmd/README.md"
+    install -Dm644 sourdough.bib.md "$pkgdir/usr/share/doc/bibmd/examples/sourdough.bib.md"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 OFL.txt "$pkgdir/usr/share/licenses/$pkgname/OFL.txt"
+}
