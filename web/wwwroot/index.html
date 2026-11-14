@@ -2,37 +2,257 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>bibmd</title>
+  <!-- The page's own styles, inline: hosted, the viewer's CSP allows no other. Only the document is drawn on
+       the canvas; everything around it (the bar, the menu on the left, the insert menu, the notes) is this page. -->
   <style>
-    :root { --ground: #161412; --ink: #DAD6D0; --faint: #8a847c; --line: #2c2824; color-scheme: dark; }
-    @media (prefers-color-scheme: light) {
-      :root { --ground: #fbfaf8; --ink: #24211e; --faint: #8a847c; --line: #e4e0da; color-scheme: light; }
+    @font-face { font-family: "iA Writer Mono S"; src: url(fonts/iAWriterMonoS-Regular.ttf) format("truetype"); font-weight: 400; font-display: swap; }
+    @font-face { font-family: "iA Writer Mono S"; src: url(fonts/iAWriterMonoS-Bold.ttf) format("truetype"); font-weight: 700; font-display: swap; }
+    @font-face { font-family: "Inter"; src: url(fonts/Inter-Regular.woff) format("woff"); font-weight: 400; font-display: swap; }
+    @font-face { font-family: "Inter"; src: url(fonts/Inter-SemiBold.woff) format("woff"); font-weight: 600; font-display: swap; }
+    /* bibmd's colours, as its canvas has them: warm paper or warm off-black, ink, and the one teal. */
+    :root {
+      --ground: #FCFAF7; --raised: #F6F4F0; --sunk: #E7E4E0; --ink: #1A1815; --soft: #57524C; --faint: #A49F99;
+      --line: #E7E4E0; --line-strong: #D7D4CF; --accent: #007A8C; --accent-ink: #FCFAF7; --accent-wash: #D6EFF4;
+      --danger: #C24A3E; --shadow: 0 1px 2px rgb(26 24 21 / .06), 0 12px 32px -8px rgb(26 24 21 / .18);
+      --mono: "iA Writer Mono S", ui-monospace, "SF Mono", monospace;
+      --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      color-scheme: light;
     }
-    html, body { margin: 0; height: 100%; background: var(--ground); overflow: hidden; }
-    #bibmd { display: block; width: 100vw; height: 100vh; outline: none; touch-action: pan-y; }
-    #veil {
-      position: fixed; inset: 0; display: grid; place-items: center; background: var(--ground);
-      color: var(--ink); font: 15px/1.6 ui-serif, Georgia, serif; transition: opacity .35s ease;
+    :root[data-theme=dark] {
+      --ground: #161412; --raised: #1F1C19; --sunk: #2A2723; --ink: #DAD6D0; --soft: #A49F99; --faint: #777169;
+      --line: #2A2723; --line-strong: #433F3A; --accent: #6AA8B5; --accent-ink: #0B0907; --accent-wash: #164852;
+      --danger: #E97065; --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 16px 40px -8px rgb(0 0 0 / .6);
+      color-scheme: dark;
     }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme]) {
+        --ground: #161412; --raised: #1F1C19; --sunk: #2A2723; --ink: #DAD6D0; --soft: #A49F99; --faint: #777169;
+        --line: #2A2723; --line-strong: #433F3A; --accent: #6AA8B5; --accent-ink: #0B0907; --accent-wash: #164852;
+        --danger: #E97065; --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 16px 40px -8px rgb(0 0 0 / .6);
+        color-scheme: dark;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); overflow: hidden;
+      font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; transition: background-color .4s ease, color .4s ease; }
+    button { font: inherit; color: inherit; }
+    svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+    /* dvh: the height left by the browser's bars (on iOS, 100vh hides the bottom under them). */
+    #app { position: fixed; inset: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+
+    /* ── The bar ── */
+    #bar { flex: none; display: flex; align-items: center; gap: 4px; height: 48px; padding: 0 10px; padding-left: max(10px, env(safe-area-inset-left));
+      border-bottom: 1px solid var(--line); min-width: 0; }
+    body.hosted #bar { display: none; }
+    .tool { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; min-width: 32px; padding: 0 8px;
+      border: 0; border-radius: 8px; background: transparent; color: var(--soft); cursor: pointer; white-space: nowrap;
+      transition: background-color .12s ease, color .12s ease; -webkit-tap-highlight-color: transparent; }
+    .tool:hover { background: var(--raised); color: var(--ink); }
+    .tool:active { background: var(--sunk); }
+    .tool[aria-pressed=true] { color: var(--accent); background: color-mix(in srgb, var(--accent-wash) 55%, transparent); }
+    .tool:disabled { opacity: .35; pointer-events: none; }
+    .tool:focus-visible, .seg button:focus-visible, .pill:focus-visible, .row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .tool .label { font-size: 13px; }
+    .mono { font-family: var(--mono); font-size: 12px; letter-spacing: .02em; }
+    .ident { display: flex; align-items: baseline; gap: 10px; min-width: 0; padding: 0 6px; flex: 1 1 auto; }
+    .mark { font: 700 11px/1 var(--mono); letter-spacing: .28em; text-transform: uppercase; color: var(--faint); text-decoration: none; flex: none; }
+    #title { font: 600 14.5px/1.2 var(--sans); letter-spacing: -.005em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    #path { font: 12px/1 var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+    .sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; flex: none; }
+    .seg { display: inline-flex; padding: 2px; border-radius: 9px; background: var(--raised); border: 1px solid var(--line); flex: none; }
+    .seg button { height: 26px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--soft); cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; font-size: 13px; transition: background-color .15s ease, color .15s ease, box-shadow .15s ease; }
+    .seg button[aria-pressed=true] { background: var(--ground); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .12), 0 0 0 1px var(--line); }
+    .editonly { transition: opacity .2s ease; }
+    body.locked .editonly { display: none; }
+
+    /* ── The section strip, when the front matter asks for one ── */
+    #strip { flex: none; display: none; gap: 6px; padding: 8px 14px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); }
+    #strip::-webkit-scrollbar { display: none; }
+    #strip.on { display: flex; }
+    .pill { flex: none; height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent;
+      color: var(--soft); cursor: pointer; font-size: 13px; transition: all .15s ease; }
+    .pill:hover { color: var(--ink); border-color: var(--line-strong); }
+    .pill[aria-current=true] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+
+    /* ── The page: the menu on the left, and the canvas ── */
+    #main { position: relative; display: flex; flex: 1 1 auto; min-height: 0; }
+    /* Placed absolutely in its stage, so its CSS size is always the stage's (bibui keeps the size a canvas had when it opened). */
+    #stage { position: relative; flex: 1 1 auto; min-width: 0; }
+    #bibmd { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: none; touch-action: none; }
+    #panel { flex: none; width: 0; overflow: hidden; border-right: 1px solid transparent; background: var(--ground);
+      transition: width .22s cubic-bezier(.2,.8,.2,1), border-color .22s ease; display: flex; flex-direction: column; }
+    body.panel #panel { width: 288px; border-right-color: var(--line); }
+    .panel-in { width: 288px; display: flex; flex-direction: column; min-height: 0; flex: 1; }
+    .tabs { display: flex; align-items: center; gap: 2px; padding: 10px 8px 8px 10px; }
+    .tab { height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--soft); cursor: pointer; font-size: 13px; }
+    .tab:hover { color: var(--ink); background: var(--raised); }
+    .tab[aria-selected=true] { color: var(--ink); background: var(--raised); font-weight: 600; }
+    .tabs .tool { margin-left: auto; }
+    .list { flex: 1; overflow-y: auto; padding: 4px 8px 32px; overscroll-behavior: contain; }
+    .row { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left; border: 0; background: transparent; color: var(--soft);
+      padding: 6px 10px; border-radius: 7px; cursor: pointer; font-size: 13.5px; line-height: 1.35; position: relative; }
+    .row:hover { background: var(--raised); color: var(--ink); }
+    .row.top { color: var(--ink); font-weight: 600; }
+    .row[aria-current=true] { color: var(--accent); background: color-mix(in srgb, var(--accent-wash) 45%, transparent); }
+    .row[aria-current=true]::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 2px; border-radius: 2px; background: var(--accent); }
+    .row .when { margin-left: auto; font: 11px/1 var(--mono); color: var(--faint); white-space: nowrap; }
+    .row.undone { opacity: .45; }
+    .row .delta { font: 11px/1 var(--mono); color: var(--faint); white-space: nowrap; }
+    .note { color: var(--faint); padding: 10px; font-size: 13px; }
+    .group { font: 700 10.5px/1 var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--faint); padding: 18px 10px 8px; }
+    .group:first-child { padding-top: 8px; color: var(--accent); }
+    .key { display: grid; grid-template-columns: 112px 1fr; gap: 10px; padding: 4px 10px; font-size: 13px; color: var(--soft); }
+    .key kbd { font: 12px/1.5 var(--mono); color: var(--ink); }
+
+    /* ── The insert menu, and the block menu ── */
+    #palette { position: fixed; z-index: 20; width: min(400px, calc(100vw - 24px)); background: var(--ground); border: 1px solid var(--line-strong);
+      border-radius: 12px; box-shadow: var(--shadow); padding: 6px; display: none; transform-origin: top center; }
+    #palette.on { display: block; animation: pop .14s cubic-bezier(.2,.9,.3,1.2); }
+    @keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+    .pal-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+    .pal-head .kind { font: 700 10.5px/1 var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--faint); }
+    #pal-q { flex: 1; border: 0; outline: 0; background: transparent; color: var(--ink); font: 13px/1.6 var(--mono); padding: 0; min-width: 0; }
+    #pal-q::placeholder { color: var(--faint); }
+    #pal-list { max-height: min(360px, 50vh); overflow-y: auto; }
+    .opt { display: flex; align-items: center; gap: 12px; width: 100%; padding: 7px 10px; border: 0; border-radius: 7px; background: transparent;
+      color: var(--soft); cursor: pointer; text-align: left; font-size: 13.5px; }
+    .opt .hint { margin-left: auto; font: 12px/1 var(--mono); color: var(--faint); }
+    .opt[aria-selected=true] { background: var(--raised); color: var(--ink); }
+    .opt.danger { color: var(--danger); }
+    .opt-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+
+    /* ── The overflow menu ── */
+    .menu { position: fixed; z-index: 20; min-width: 236px; background: var(--ground); border: 1px solid var(--line-strong); border-radius: 12px;
+      box-shadow: var(--shadow); padding: 6px; display: none; }
+    .menu.on { display: block; animation: pop .14s cubic-bezier(.2,.9,.3,1.2); }
+    .menu .opt kbd { margin-left: auto; font: 11.5px/1 var(--mono); color: var(--faint); }
+    .menu .size { display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px 10px; color: var(--soft); font-size: 13.5px; }
+    .menu .size span { flex: 1; }
+    .menu .size output { font: 12px/1 var(--mono); min-width: 2.5em; text-align: center; color: var(--ink); }
+
+    /* ── Notes: what a key did, and what went wrong ── */
+    #toast { position: fixed; z-index: 30; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translate(-50%, 12px);
+      background: var(--ink); color: var(--ground); font-size: 13px; padding: 8px 14px; border-radius: 999px; opacity: 0; pointer-events: none;
+      transition: opacity .18s ease, transform .25s cubic-bezier(.2,.8,.2,1); white-space: nowrap; max-width: calc(100vw - 32px);
+      overflow: hidden; text-overflow: ellipsis; box-shadow: var(--shadow); }
+    #toast.on { opacity: 1; transform: translate(-50%, 0); }
+    #toast.error { background: var(--danger); color: #fff; }
+
+    /* ── Starting, and a file dragged over ── */
+    #veil { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: var(--ground); color: var(--ink);
+      font: 15px/1.6 var(--sans); transition: opacity .35s ease; }
     #veil.gone { opacity: 0; pointer-events: none; }
-    #veil .word { font: 600 13px/1 ui-monospace, monospace; letter-spacing: .3em; text-transform: uppercase; color: var(--faint); }
-    #veil .word::after { content: ""; display: block; height: 1px; margin-top: 14px; background: var(--faint);
-      transform-origin: left; animation: read 1.4s ease-in-out infinite; }
-    #veil p { max-width: 34em; margin: 18px 0 0; color: var(--faint); }
-    #veil.failed .word::after { animation: none; transform: scaleX(1); background: #c46a5a; }
+    #veil .word { font: 700 12px/1 var(--mono); letter-spacing: .32em; text-transform: uppercase; color: var(--faint); text-align: center; }
+    #veil .word::after { content: ""; display: block; height: 1.5px; margin-top: 12px; background: var(--accent); transform-origin: left;
+      animation: read 1.4s ease-in-out infinite; }
+    #veil p { max-width: 34em; margin: 18px 24px 0; color: var(--soft); text-align: center; }
+    #veil.failed .word::after { animation: none; background: var(--danger); }
     @keyframes read { 0% { transform: scaleX(0); } 60% { transform: scaleX(1); } 100% { transform: scaleX(1); opacity: 0; } }
-    #drop {
-      position: fixed; inset: 14px; border: 1.5px dashed var(--faint); border-radius: 10px; display: grid;
-      place-items: center; color: var(--ink); font: 600 13px/1 ui-monospace, monospace; letter-spacing: .2em;
-      text-transform: uppercase; background: color-mix(in srgb, var(--ground) 82%, transparent);
-      opacity: 0; pointer-events: none; transition: opacity .15s ease;
-    }
+    #drop { position: fixed; inset: 14px; z-index: 35; border: 1.5px dashed var(--accent); border-radius: 14px; display: grid; place-items: center;
+      color: var(--ink); font: 700 12px/1 var(--mono); letter-spacing: .22em; text-transform: uppercase;
+      background: color-mix(in srgb, var(--ground) 86%, transparent); opacity: 0; pointer-events: none; transition: opacity .15s ease; }
     body.dragging #drop { opacity: 1; }
+
+    /* ── A phone: the bar keeps its few tools, the menu slides over the page, the insert menu sits at the bottom ── */
+    #scrim { position: absolute; inset: 0; z-index: 9; background: rgb(0 0 0 / .32); opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+    @media (max-width: 720px) {
+      #bar { gap: 2px; padding: 0 6px; }
+      #path, .mark, .ident .sep, .wide-only { display: none; }
+      .tool .label { display: none; }
+      .seg button .label { display: none; }
+      #panel { position: absolute; z-index: 10; top: 0; bottom: 0; left: 0; box-shadow: var(--shadow); }
+      body.panel #panel { width: min(320px, 86vw); }
+      .panel-in { width: min(320px, 86vw); }
+      body.panel #scrim { opacity: 1; pointer-events: auto; }
+      #palette { left: 12px !important; right: 12px; width: auto; top: auto !important; bottom: max(12px, env(safe-area-inset-bottom)); }
+    }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
   </style>
 </head>
-<body>
-  <canvas id="bibmd" tabindex="0"></canvas>
+<body class="locked">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+    <symbol id="i-keys" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M8 13h.01M12 13h.01M16 13h.01M7 16h10"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  </svg>
+
+  <div id="app">
+    <header id="bar">
+      <button class="tool" data-cmd="panel" id="t-panel" aria-pressed="false" title="Contents, history and keys (Ctrl+B)" aria-label="Menu"><svg class="i"><use href="#i-panel"/></svg></button>
+      <div class="ident">
+        <a class="mark" href="./">bibmd</a>
+        <span class="sep"></span>
+        <span id="title">bibmd</span>
+        <span id="path"></span>
+      </div>
+      <button class="tool editonly" data-cmd="insert" id="t-insert" title="Insert a block ( / )"><svg class="i"><use href="#i-plus"/></svg><span class="label">Insert</span></button>
+      <button class="tool editonly wide-only" data-cmd="undo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="i"><use href="#i-undo"/></svg></button>
+      <button class="tool editonly wide-only" data-cmd="redo" title="Redo (Ctrl+Y)" aria-label="Redo"><svg class="i"><use href="#i-redo"/></svg></button>
+      <span class="sep wide-only"></span>
+      <button class="tool" data-cmd="source" id="t-source" aria-pressed="false" title="Markdown source (Ctrl+E)" aria-label="Markdown source"><svg class="i"><use href="#i-code"/></svg></button>
+      <div class="seg" role="group" aria-label="Mode" title="Read or write (Ctrl+L)">
+        <button id="t-read" data-mode="read" aria-pressed="true"><svg class="i"><use href="#i-book"/></svg><span class="label">Read</span></button>
+        <button id="t-write" data-mode="write" aria-pressed="false"><svg class="i"><use href="#i-pen"/></svg><span class="label">Write</span></button>
+      </div>
+      <button class="tool" id="t-more" aria-haspopup="menu" aria-expanded="false" title="More" aria-label="More"><svg class="i"><use href="#i-more"/></svg></button>
+    </header>
+    <nav id="strip" aria-label="Sections"></nav>
+    <div id="main">
+      <aside id="panel" aria-label="Document menu">
+        <div class="panel-in">
+          <div class="tabs" role="tablist">
+            <button class="tab" role="tab" data-tab="contents">Contents</button>
+            <button class="tab" role="tab" data-tab="history">History</button>
+            <button class="tab" role="tab" data-tab="keys">Keys</button>
+            <button class="tool" data-cmd="close-panel" title="Close (Ctrl+B)" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>
+          </div>
+          <div class="list" id="panel-list" role="tabpanel"></div>
+        </div>
+      </aside>
+      <div id="scrim"></div>
+      <div id="stage"><canvas id="bibmd" tabindex="0"></canvas></div>
+    </div>
+  </div>
+
+  <div id="palette" role="dialog" aria-label="Insert">
+    <div class="pal-head"><span class="kind" id="pal-kind">Insert</span><input id="pal-q" autocomplete="off" spellcheck="false" placeholder="heading, table 4x3, code…" aria-controls="pal-list"></div>
+    <div id="pal-list" role="listbox"></div>
+  </div>
+
+  <div class="menu" id="more" role="menu">
+    <button class="opt standalone" role="menuitem" data-act="open"><svg class="i"><use href="#i-file"/></svg>Open a file…<kbd>Ctrl+O</kbd></button>
+    <button class="opt standalone" role="menuitem" data-act="download"><svg class="i"><use href="#i-download"/></svg>Download Markdown<kbd>Ctrl+S</kbd></button>
+    <div class="opt-sep standalone"></div>
+    <button class="opt" role="menuitem" data-cmd="contents"><svg class="i"><use href="#i-list"/></svg>Contents</button>
+    <button class="opt" role="menuitem" data-cmd="history"><svg class="i"><use href="#i-history"/></svg>History</button>
+    <button class="opt" role="menuitem" data-cmd="keys"><svg class="i"><use href="#i-keys"/></svg>Keyboard shortcuts<kbd>F1</kbd></button>
+    <div class="opt-sep"></div>
+    <div class="size"><span>Text size</span>
+      <button class="tool" data-cmd="smaller" aria-label="Smaller"><svg class="i"><use href="#i-minus"/></svg></button>
+      <output id="size-out">M</output>
+      <button class="tool" data-cmd="bigger" aria-label="Larger"><svg class="i"><use href="#i-plus"/></svg></button></div>
+    <button class="opt" role="menuitem" data-cmd="theme" id="m-theme"><svg class="i"><use href="#i-moon"/></svg><span>Dark</span><kbd>Ctrl+T</kbd></button>
+  </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
   <div id="veil"><div><div class="word">bibmd</div><p id="note"></p></div></div>
   <div id="drop">Drop a Markdown file to read it</div>
   <input id="pick" type="file" accept=".md,.markdown,.txt,text/markdown,image/*" multiple hidden>

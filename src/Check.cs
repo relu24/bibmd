@@ -13,28 +13,36 @@ public static class Check
     public static int Run(string path)
     {
         if (!File.Exists(path)) { Console.Error.WriteLine($"{path}: no such file"); return 2; }
-        var doc = new Document(path);
-        string name = Path.GetFileName(path);
+        var (lines, errors) = Report(File.ReadAllText(path), Path.GetFileName(path));
+        foreach (var line in lines) Console.WriteLine(line);
+        return errors == 0 ? 0 : 1;
+    }
+
+    /// <summary>The check of <paramref name="text"/>, a document named <paramref name="name"/>: its lines, and how many are errors.</summary>
+    public static (List<string> Lines, int Errors) Report(string text, string name)
+    {
+        text = text.Replace("\r\n", "\n");
+        var output = new List<string>();
         var sources = new List<string>();
         var starts = new List<int>();   // the file line of each bib block's opening fence
         var dataBlocks = new List<string>();
         string? front = null;
-        foreach (var b in doc.Blocks)
+        foreach (var b in Blocks.Split(text))
         {
-            string src = doc.Source(b);
+            string src = text[b.Start..b.End];
             if (b.Kind == BlockKind.FrontMatter) front = src;
             else if (b.Kind == BlockKind.Code && Bib.IsData(src)) dataBlocks.Add(Bib.Body(src));
             else if (b.Kind == BlockKind.Code && Bib.IsBib(src))
             {
                 sources.Add(Bib.Body(src));
-                starts.Add(doc.Text.AsSpan(0, b.Start).Count('\n') + 1);
+                starts.Add(text.AsSpan(0, b.Start).Count('\n') + 1);
             }
         }
-        if (sources.Count == 0) { Console.WriteLine($"{name}: no bib blocks"); return 0; }
+        if (sources.Count == 0) { output.Add($"{name}: no bib blocks"); return (output, 0); }
 
         int errors = 0, warnings = 0;
-        void Error(string message) { errors++; Console.WriteLine($"{name}: error: {message}"); }
-        void Warn(string message) { warnings++; Console.WriteLine($"{name}: warning: {message}"); }
+        void Error(string message) { errors++; output.Add($"{name}: error: {message}"); }
+        void Warn(string message) { warnings++; output.Add($"{name}: warning: {message}"); }
         // "… at line 3:5" in a block is "… at line 14:5" in the file, with the block named.
         string At(int k, string message) =>
             System.Text.RegularExpressions.Regex.Replace(message, @" at line (\d+):(\d+)",
@@ -63,7 +71,7 @@ public static class Check
             string label = n.Text("label") ?? "";
             if (Values.Truthy(n.Props.GetValueOrDefault("disabled")))
             {
-                Console.WriteLine($"{name}: button “{label}”: disabled at first, not clicked");
+                output.Add($"{name}: button “{label}”: disabled at first, not clicked");
                 continue;
             }
             var click = new DocSession(sources, data).Click(n.Key!);
@@ -73,15 +81,15 @@ public static class Check
             if (failed) continue;
             var did = click.Effects.Select(x => x.Describe())
                 .Concat(click.Sets.Select(s => $"set {s.Key}")).ToList();
-            Console.WriteLine($"{name}: button “{label}”: " + (did.Count == 0 ? "does nothing" : string.Join("; then ", did)));
+            output.Add($"{name}: button “{label}”: " + (did.Count == 0 ? "does nothing" : string.Join("; then ", did)));
             foreach (var x in click.Effects.Where(x => !allowed.Contains(x.Kind) && !(x.Tool is { } t && allowed.Contains(t))))
                 Warn($"button “{label}” would {x.Kind}{(x.Tool is null ? "" : " " + x.Tool)}, which the front matter's effects: does not list, so a host refuses it");
         }
 
-        Console.WriteLine(errors == 0
+        output.Add(errors == 0
             ? $"{name}: ok, {sources.Count} bib block(s){(warnings > 0 ? $", {warnings} warning(s)" : "")}"
             : $"{name}: {errors} error(s), {warnings} warning(s)");
-        return errors == 0 ? 0 : 1;
+        return (output, errors);
     }
 
     private static IEnumerable<FrameNode> All(IEnumerable<FrameNode> nodes) =>

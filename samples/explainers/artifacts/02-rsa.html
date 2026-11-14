@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A lock anyone can close but only you can open</title>
+<style>
+  :root {
+    --bg: #efe9dc;
+    --card: #fbf8f1;
+    --ink: #1f1b16;
+    --muted: #6b6257;
+    --line: #dcd3c2;
+    --brass: #a8741a;
+    --brass-soft: rgba(168, 116, 26, .14);
+    --pub: #1d6f73;
+    --pub-soft: rgba(29, 111, 115, .12);
+    --priv: #9b2f45;
+    --priv-soft: rgba(155, 47, 69, .12);
+    --ok: #3b7a3a;
+    --shadow: 0 1px 0 rgba(0,0,0,.04), 0 16px 32px -22px rgba(60,40,10,.45);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141a;
+      --card: #1a1d25;
+      --ink: #ece6da;
+      --muted: #9a958c;
+      --line: #2c303b;
+      --brass: #e3b252;
+      --brass-soft: rgba(227, 178, 82, .14);
+      --pub: #5fc4c8;
+      --pub-soft: rgba(95, 196, 200, .12);
+      --priv: #f07a92;
+      --priv-soft: rgba(240, 122, 146, .13);
+      --ok: #7fcf7d;
+      --shadow: 0 1px 0 rgba(255,255,255,.03), 0 20px 40px -24px rgba(0,0,0,.9);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 "Charter", "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 56px 22px 90px; }
+  .mono, code, table, .num, button, .tag, label { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .eyebrow { font: 12px ui-monospace, Menlo, monospace; letter-spacing: .2em; text-transform: uppercase; color: var(--brass); }
+  h1 { font-size: clamp(36px, 5.6vw, 58px); line-height: 1.04; font-weight: 700; letter-spacing: -.02em; margin: 10px 0 16px; }
+  h1 .pub { color: var(--pub); } h1 .priv { color: var(--priv); }
+  h2 { font-size: 28px; margin: 0 0 8px; letter-spacing: -.01em; }
+  h2 small { font: 13px ui-monospace, Menlo, monospace; color: var(--brass); margin-right: 10px; vertical-align: middle; }
+  p { max-width: 66ch; margin: 0 0 14px; }
+  .lede { font-size: 20px; color: var(--muted); }
+  section { margin-top: 64px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); margin: 18px 0; }
+  code { background: var(--brass-soft); padding: 1px 6px; border-radius: 5px; font-size: .88em; }
+  .hero { display: grid; grid-template-columns: 220px 1fr; gap: 26px; align-items: center; }
+  @media (max-width: 720px) { .hero { grid-template-columns: 1fr; } }
+  #lock .shackle { transition: transform .5s cubic-bezier(.5,1.6,.5,1); transform-origin: 140px 70px; }
+  #lock.open .shackle { transform: translateY(-26px) rotate(0deg); }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  button { cursor: pointer; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); padding: 8px 14px; font-size: 13px; }
+  button:hover { border-color: var(--brass); }
+  button.pub { border-color: var(--pub); color: var(--pub); background: var(--pub-soft); }
+  button.priv { border-color: var(--priv); color: var(--priv); background: var(--priv-soft); }
+  button:disabled { opacity: .4; cursor: default; }
+  .face { font: 22px ui-monospace, Menlo, monospace; letter-spacing: .04em; padding: 10px 14px; border-radius: 10px; background: var(--bg); border: 1px dashed var(--line); min-height: 52px; word-break: break-all; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button { padding: 5px 9px; border-radius: 8px; min-width: 40px; }
+  .chips button.on { background: var(--ink); color: var(--card); border-color: var(--ink); }
+  .chips button.bad { opacity: .35; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
+  .lbl { font: 12px ui-monospace, Menlo, monospace; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 0 0 8px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+  @media (max-width: 720px) { .stats { grid-template-columns: 1fr 1fr; } }
+  .stat { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--bg); }
+  .stat .k { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); }
+  .stat .v { font: 600 26px ui-monospace, Menlo, monospace; }
+  .stat.pub { border-color: var(--pub); background: var(--pub-soft); } .stat.pub .v { color: var(--pub); }
+  .stat.priv { border-color: var(--priv); background: var(--priv-soft); } .stat.priv .v { color: var(--priv); }
+  .stat .s { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: right; padding: 5px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td:first-child, th:first-child { text-align: left; }
+  tr.hit td { background: var(--brass-soft); }
+  .note { font-size: 14px; color: var(--muted); }
+  .warn { color: var(--priv); }
+  input[type=text] { font: 18px ui-monospace, Menlo, monospace; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); width: 100%; letter-spacing: .08em; text-transform: uppercase; }
+  input[type=range] { width: 100%; accent-color: var(--brass); }
+  .letters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .tile { border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; min-width: 64px; text-align: center; cursor: pointer; background: var(--bg); transition: transform .15s; }
+  .tile:hover { transform: translateY(-2px); }
+  .tile.sel { border-color: var(--brass); box-shadow: 0 0 0 2px var(--brass-soft); }
+  .tile .ch { font: 700 20px ui-monospace, Menlo, monospace; }
+  .tile .m { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); }
+  .tile .c { font: 600 14px ui-monospace, Menlo, monospace; color: var(--pub); }
+  .tile .d { font: 600 14px ui-monospace, Menlo, monospace; color: var(--priv); }
+  .arrow { color: var(--muted); font-size: 11px; }
+  .bits { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0 12px; }
+  .bit { width: 26px; height: 30px; display: grid; place-items: center; border-radius: 6px; font: 600 14px ui-monospace, Menlo, monospace; border: 1px solid var(--line); }
+  .bit.one { background: var(--brass); color: var(--card); border-color: var(--brass); }
+  .sieve { display: flex; flex-wrap: wrap; gap: 3px; margin: 12px 0; }
+  .sieve span { font: 11px ui-monospace, Menlo, monospace; padding: 3px 5px; border-radius: 4px; background: var(--bg); border: 1px solid var(--line); color: var(--muted); }
+  .sieve span.tried { color: var(--ink); }
+  .sieve span.found { background: var(--priv); color: var(--card); border-color: var(--priv); }
+  canvas { width: 100%; display: block; }
+  .closing ol { padding-left: 22px; max-width: 66ch; }
+  .closing li { margin-bottom: 10px; }
+  .closing li::marker { color: var(--brass); font-family: ui-monospace, Menlo, monospace; }
+  .closing { margin-top: 72px; border-top: 1px solid var(--line); padding-top: 26px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Explainer 02 · Cryptography</div>
+  <h1>A lock anyone can <span class="pub">close</span> but only you can <span class="priv">open</span></h1>
+  <p class="lede">Imagine handing out open padlocks to the whole world. Anyone can snap one shut on a box and send it to you; only your key opens it. That is public-key cryptography, and RSA builds the padlock out of nothing but two prime numbers and remainders.</p>
+
+  <div class="card hero">
+    <svg id="lock" class="open" viewBox="0 0 280 260" width="220" aria-label="padlock">
+      <g class="shackle"><path d="M90 120 V80 a50 50 0 0 1 100 0 V120" fill="none" stroke="var(--muted)" stroke-width="18" stroke-linecap="round"/></g>
+      <rect x="60" y="112" width="160" height="128" rx="22" fill="var(--brass)"/>
+      <rect x="60" y="112" width="160" height="128" rx="22" fill="none" stroke="var(--ink)" stroke-opacity=".15" stroke-width="2"/>
+      <circle cx="140" cy="166" r="14" fill="var(--card)"/>
+      <rect x="134" y="170" width="12" height="36" rx="5" fill="var(--card)"/>
+    </svg>
+    <div>
+      <div class="lbl">The box holds</div>
+      <div class="face" id="heroFace">HELLO</div>
+      <div class="btns">
+        <button class="pub" id="heroClose">close it with the public key (n, e)</button>
+        <button class="priv" id="heroOpen" disabled>open it with the private key d</button>
+      </div>
+      <p class="note" style="margin-top:10px" id="heroNote">Anyone may close it. Watch what the box holds once it is shut.</p>
+    </div>
+  </div>
+
+  <section>
+    <h2><small>01</small>Two primes make a key</h2>
+    <p>Pick two primes, <code>p</code> and <code>q</code>, and keep them secret. Their product <code>n = p·q</code> goes public. So does a small number <code>e</code>, the "closing" exponent. The private "opening" exponent <code>d</code> is the number that undoes <code>e</code>, and computing it needs <code>φ = (p−1)(q−1)</code>, which you can only get if you know <code>p</code> and <code>q</code>.</p>
+    <div class="card">
+      <div class="row">
+        <div><div class="lbl">secret prime p</div><div class="chips" id="pChips"></div></div>
+        <div><div class="lbl">secret prime q</div><div class="chips" id="qChips"></div></div>
+      </div>
+      <div class="lbl" style="margin-top:16px">public exponent e (must share no factor with φ)</div>
+      <div class="chips" id="eChips"></div>
+      <div class="stats">
+        <div class="stat pub"><div class="k">n = p · q (public)</div><div class="v" id="nV"></div><div class="s" id="nS"></div></div>
+        <div class="stat"><div class="k">φ = (p−1)(q−1) (secret)</div><div class="v" id="phiV"></div><div class="s" id="phiS"></div></div>
+        <div class="stat pub"><div class="k">e (public)</div><div class="v" id="eV"></div><div class="s">closing exponent</div></div>
+        <div class="stat priv"><div class="k">d (private)</div><div class="v" id="dV"></div><div class="s" id="dS"></div></div>
+      </div>
+      <p class="warn" id="pqWarn" style="margin-top:12px; display:none">p and q must be different primes: with p = q, anyone can take a square root of n.</p>
+    </div>
+
+    <h3 style="margin-bottom:6px">Finding d: the extended Euclidean algorithm</h3>
+    <p>We need <code>d</code> with <code>e·d ≡ 1 (mod φ)</code>. Euclid's algorithm divides repeatedly, keeping remainders; the extended version also carries a coefficient <code>t</code> so that every remainder equals <code>t·e</code> modulo φ. When the remainder reaches 1, its <code>t</code> is the inverse.</p>
+    <div class="card">
+      <table id="euclid"></table>
+      <p class="note" style="margin-top:10px" id="euclidNote"></p>
+    </div>
+  </section>
+
+  <section>
+    <h2><small>02</small>Closing the lock</h2>
+    <p>To encrypt, turn each letter into a number <code>m</code> (here its character code: A = 65 … Z = 90, space = 32) and compute <code>c = m<sup>e</sup> mod n</code>. Anyone can do it: it uses only the public <code>n</code> and <code>e</code>. To decrypt, compute <code>m = c<sup>d</sup> mod n</code>. Click a letter to see the arithmetic.</p>
+    <div class="card">
+      <div class="lbl">message (A–Z and spaces)</div>
+      <input type="text" id="msg" value="MEET AT NOON" maxlength="24">
+      <div class="letters" id="letters"></div>
+      <div class="btns"><label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)"><input type="checkbox" id="wrong"> open with a wrong key (d + 2)</label></div>
+      <p class="note" id="garble" style="margin-top:6px"></p>
+    </div>
+
+    <h3 style="margin-bottom:6px">Square and multiply</h3>
+    <p>Computing <code>m<sup>e</sup></code> directly would produce enormous numbers; instead, write the exponent in binary and walk its bits from the left. For each bit, square the running value; if the bit is 1, also multiply by <code>m</code>. Reduce modulo <code>n</code> after <em>every</em> step, so nothing ever exceeds <code>n²</code>. Fewer than 2·(number of bits) multiplications, even for exponents with hundreds of digits.</p>
+    <div class="row">
+      <div class="card" style="margin:0">
+        <div class="lbl" id="encTitle"></div>
+        <div class="bits" id="encBits"></div>
+        <table id="encSteps"></table>
+      </div>
+      <div class="card" style="margin:0">
+        <div class="lbl" id="decTitle"></div>
+        <div class="bits" id="decBits"></div>
+        <table id="decSteps"></table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><small>03</small>Why nobody else can open it</h2>
+    <p>An attacker sees <code>n</code> and <code>e</code>. To get <code>d</code> they need φ, and to get φ they need <code>p</code> and <code>q</code>: they must <b>factor n</b>. For our tiny <code>n</code> that is instant. The simplest attack is trial division: try 2, 3, 5, 7, … up to √n.</p>
+    <div class="card">
+      <div class="lbl" id="sieveTitle"></div>
+      <div class="sieve" id="sieve"></div>
+      <p class="note" id="crack"></p>
+    </div>
+    <p>But √n has half as many digits as <code>n</code>, so every two extra digits of <code>n</code> make trial division ten times longer. Multiplying <code>p·q</code> takes about digits² steps; undoing it takes about 10<sup>digits/2</sup>. Slide the size of <code>n</code>:</p>
+    <div class="card">
+      <label style="display:flex; justify-content:space-between; font-size:13px; color:var(--muted)"><span>digits in n</span><b id="digV" style="color:var(--ink)"></b></label>
+      <input type="range" id="dig" min="4" max="620" value="40">
+      <canvas id="growth" height="260" style="margin-top:12px"></canvas>
+      <div class="stats">
+        <div class="stat pub"><div class="k">multiply p·q</div><div class="v" id="mulV"></div><div class="s">digit operations</div></div>
+        <div class="stat"><div class="k">trial divisions</div><div class="v" id="trialV"></div><div class="s">odd numbers up to √n</div></div>
+        <div class="stat priv"><div class="k">at 10⁹ per second</div><div class="v" id="timeV"></div><div class="s" id="timeS"></div></div>
+        <div class="stat"><div class="k">today's keys</div><div class="v">617</div><div class="s">digits (2048 bits)</div></div>
+      </div>
+      <p class="note" style="margin-top:12px">Cleverer methods exist. The best known, the number field sieve, grows more slowly than trial division, but still faster than any power of the number of digits: the largest RSA challenge number factored in public had 250 digits and took about 2,700 core-years of computing. Doubling the digits does not double the attacker's work; it multiplies it beyond reach.</p>
+    </div>
+  </section>
+
+  <section class="closing">
+    <h2>What you just saw</h2>
+    <ol>
+      <li>RSA's public key is a product <code>n = p·q</code> and an exponent <code>e</code>; the private key <code>d</code> is the inverse of <code>e</code> modulo <code>(p−1)(q−1)</code>, found with the extended Euclidean algorithm.</li>
+      <li>Encrypting is <code>m<sup>e</sup> mod n</code>, decrypting is <code>c<sup>d</sup> mod n</code>; because <code>e·d = 1 + k·φ</code>, raising to <code>e</code> then <code>d</code> lands back on <code>m</code> (Euler's theorem).</li>
+      <li>Square-and-multiply makes huge powers cheap, and reducing mod <code>n</code> at each step keeps every number small.</li>
+      <li>Security rests on an asymmetry: multiplying two primes is easy, factoring their product is not.</li>
+      <li>Caveat: encrypting letter by letter, as here, is insecure (equal letters give equal ciphers). Real RSA uses 2048-bit or larger <code>n</code> and pads each message with randomness first.</li>
+    </ol>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const PRIMES = [11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97];
+  const E_CAND = [3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97];
+  const gcd = (a, b) => { while (b) [a, b] = [b, a % b]; return a; };
+  // Square and multiply, reducing mod n after every multiplication: products stay below n².
+  function modpow(m, ex, n) {
+    const bits = ex.toString(2).split('').map(Number);
+    let r = 1; const steps = [];
+    for (const b of bits) {
+      const sq = r * r % n; r = sq;
+      let mul = null; if (b) { mul = r * m % n; r = mul; }
+      steps.push({ b, sq, mul, r });
+    }
+    return { r, bits, steps };
+  }
+  function egcd(phi, e) {
+    const rows = [{ r: phi, q: null, t: 0 }, { r: e, q: null, t: 1 }];
+    while (rows[rows.length - 1].r !== 0) {
+      const a = rows[rows.length - 2], b = rows[rows.length - 1];
+      const q = Math.floor(a.r / b.r);
+      b.q = q;
+      rows.push({ r: a.r - q * b.r, q: null, t: a.t - q * b.t });
+    }
+    return rows;
+  }
+  const code = ch => ch === ' ' ? 32 : ch.charCodeAt(0);
+  const show = m => (m === 32 ? '␣' : (m >= 65 && m <= 90) ? String.fromCharCode(m) : '·');
+
+  let p = 61, q = 53, e = 17, sel = 0;
+  const key = () => {
+    const n = p * q, phi = (p - 1) * (q - 1);
+    const valid = E_CAND.filter(x => x < phi && gcd(x, phi) === 1);
+    if (!valid.includes(e)) e = valid.includes(17) ? 17 : valid[0];
+    const rows = egcd(phi, e);
+    const one = rows.find(r => r.r === 1);
+    const d = ((one.t % phi) + phi) % phi;
+    return { n, phi, valid, rows, d };
+  };
+
+  function chips(el, list, cur, onPick, disabled) {
+    el.innerHTML = '';
+    list.forEach(v => {
+      const b = document.createElement('button'); b.textContent = v;
+      if (v === cur) b.classList.add('on');
+      if (disabled && disabled(v)) b.classList.add('bad');
+      b.onclick = () => onPick(v); el.appendChild(b);
+    });
+  }
+
+  function render() {
+    const K = key();
+    chips($('pChips'), PRIMES, p, v => { p = v; render(); }, v => v === q);
+    chips($('qChips'), PRIMES, q, v => { q = v; render(); }, v => v === p);
+    chips($('eChips'), K.valid.slice(0, 14), e, v => { e = v; render(); });
+    $('pqWarn').style.display = p === q ? 'block' : 'none';
+    $('nV').textContent = K.n; $('nS').textContent = `${p} × ${q}, ${String(K.n).length} digits`;
+    $('phiV').textContent = K.phi; $('phiS').textContent = `${p - 1} × ${q - 1}`;
+    $('eV').textContent = e;
+    $('dV').textContent = K.d; $('dS').textContent = `${e} × ${K.d} = ${e * K.d} = ${Math.floor(e * K.d / K.phi)}·φ + 1`;
+
+    // Euclid table
+    let h = '<tr><th>step</th><th>remainder r</th><th>quotient</th><th>t (r ≡ t·e mod φ)</th></tr>';
+    K.rows.forEach((r, i) => {
+      h += `<tr class="${r.r === 1 ? 'hit' : ''}"><td>${i === 0 ? 'φ' : i === 1 ? 'e' : i}</td><td>${r.r}</td><td>${r.q ?? ''}</td><td>${r.t}</td></tr>`;
+    });
+    $('euclid').innerHTML = h;
+    const one = K.rows.find(r => r.r === 1);
+    $('euclidNote').innerHTML = `Each row: r = r₂ − quotient·r₁ and t = t₂ − quotient·t₁, using the two rows above. Remainder 1 has t = ${one.t}` +
+      (one.t < 0 ? `, negative, so add φ: d = ${one.t} + ${K.phi} = <b>${K.d}</b>.` : `, so d = <b>${K.d}</b>.`) + ` Check: ${e} × ${K.d} mod ${K.phi} = ${e * K.d % K.phi}.`;
+
+    // message
+    const raw = $('msg').value.toUpperCase().replace(/[^A-Z ]/g, '').slice(0, 24) || 'A';
+    const dk = $('wrong').checked ? K.d + 2 : K.d;
+    const letters = raw.split('').map(ch => {
+      const m = code(ch), c = modpow(m, e, K.n).r, back = modpow(c, dk, K.n).r;
+      return { ch, m, c, back };
+    });
+    if (sel >= letters.length) sel = 0;
+    $('letters').innerHTML = letters.map((L, i) =>
+      `<div class="tile ${i === sel ? 'sel' : ''}" data-i="${i}"><div class="ch">${L.ch === ' ' ? '␣' : L.ch}</div><div class="m">m=${L.m}</div><div class="arrow">↓ ^e mod n</div><div class="c">${L.c}</div><div class="arrow">↓ ^d mod n</div><div class="d">${show(L.back)}</div></div>`).join('');
+    [...$('letters').children].forEach(t => t.onclick = () => { sel = +t.dataset.i; render(); });
+    const repeats = new Set(letters.map(l => l.c)).size < letters.length;
+    $('garble').innerHTML = ($('wrong').checked ? `<span class="warn">With d + 2 = ${dk} the numbers come back wrong: ${letters.map(l => l.back).join(' ')}.</span> ` : 'Each cipher number decrypts to its letter. ') +
+      (repeats ? 'Notice repeated letters give repeated ciphers: one reason real RSA adds random padding.' : '');
+
+    // square and multiply panels
+    const L = letters[sel];
+    const panel = (title, base, ex, tb, bb, tt, label) => {
+      const R = modpow(base, ex, K.n);
+      $(tt).innerHTML = `${label}: ${base}<sup>${ex}</sup> mod ${K.n} = ${R.r}`;
+      $(bb).innerHTML = R.bits.map(b => `<div class="bit ${b ? 'one' : ''}">${b}</div>`).join('');
+      let s = '<tr><th>bit</th><th>square</th><th>× ' + base + '</th><th>value</th></tr>';
+      R.steps.forEach((st, i) => {
+        s += `<tr><td>${st.b}</td><td>${i === 0 ? '1²' : st.sq}</td><td>${st.mul ?? '—'}</td><td>${st.r}</td></tr>`;
+      });
+      $(tb).innerHTML = s;
+    };
+    panel('enc', L.m, e, 'encSteps', 'encBits', 'encTitle', `close "${L.ch === ' ' ? '␣' : L.ch}"`);
+    panel('dec', L.c, dk, 'decSteps', 'decBits', 'decTitle', 'open it');
+
+    // trial division
+    const lim = Math.floor(Math.sqrt(K.n));
+    const cands = [2]; for (let k = 3; k <= lim; k += 2) cands.push(k);
+    const small = Math.min(p, q);
+    const idx = cands.indexOf(small);
+    $('sieveTitle').textContent = `trial division of n = ${K.n}: candidates 2, 3, 5, … up to √n ≈ ${lim}`;
+    $('sieve').innerHTML = cands.map((c, i) => `<span class="${c === small ? 'found' : i < idx ? 'tried' : ''}">${c}</span>`).join('');
+    const big = K.n / small;
+    const phi2 = (small - 1) * (big - 1);
+    $('crack').innerHTML = `Found after <b>${idx + 1}</b> tries: ${K.n} = ${small} × ${big}. Now φ = ${phi2}, and the same Euclid steps give d = <b class="warn">${K.d}</b>. The lock is open to anyone who can factor n.`;
+    drawGrowth();
+  }
+
+  // ---- growth of factoring ----
+  const fmtBig = lg => lg < 6 ? Math.round(Math.pow(10, lg)).toLocaleString('en') : `10^${lg.toFixed(0)}`;
+  function fmtTime(lgSec) {
+    const s = Math.pow(10, lgSec);
+    if (lgSec < -3) return ['< 1 ms', 'instant'];
+    if (s < 60) return [s.toFixed(s < 10 ? 2 : 0) + ' s', 'seconds'];
+    if (s < 3600) return [(s / 60).toFixed(1) + ' min', 'minutes'];
+    if (s < 86400) return [(s / 3600).toFixed(1) + ' h', 'hours'];
+    if (s < 3.156e7) return [(s / 86400).toFixed(1) + ' days', 'days'];
+    const lgY = lgSec - Math.log10(3.156e7);
+    if (lgY < 6) return [Math.round(Math.pow(10, lgY)).toLocaleString('en') + ' yr', 'years'];
+    const lgU = lgSec - Math.log10(4.35e17);
+    return ['10^' + lgY.toFixed(0) + ' yr', lgU > 0 ? `${lgU < 3 ? Math.pow(10, lgU).toFixed(0) : '10^' + lgU.toFixed(0)} × the age of the universe` : 'years'];
+  }
+  const lgTrial = D => (D - 1) / 2 - Math.log10(2) + 0.25; // √n ≈ 10^((D−0.5)/2), odd ones: half
+  function drawGrowth() {
+    const D = +$('dig').value; $('digV').textContent = D;
+    const cv = $('growth'), dpr = devicePixelRatio || 1, W = cv.clientWidth, H = 260;
+    cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + 'px';
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+    const L = 52, B = 26, maxY = 320, minY = -9;
+    const X = d => L + (d - 4) / (620 - 4) * (W - L - 10);
+    const Y = v => 10 + (maxY - v) / (maxY - minY) * (H - B - 10);
+    g.font = '11px ui-monospace, Menlo, monospace';
+    const marks = [[0, '1 second'], [100, '10¹⁰⁰ s'], [200, '10²⁰⁰ s'], [300, '10³⁰⁰ s']];
+    marks.forEach(([v, t]) => {
+      g.strokeStyle = css('--line'); g.beginPath(); g.moveTo(L, Y(v)); g.lineTo(W, Y(v)); g.stroke();
+      g.fillStyle = css('--muted'); g.fillText(t, L + 4, Y(v) - 3);
+    });
+    g.strokeStyle = css('--brass'); g.globalAlpha = .5; g.beginPath(); g.moveTo(L, Y(Math.log10(4.35e17))); g.lineTo(W, Y(Math.log10(4.35e17))); g.stroke(); g.globalAlpha = 1;
+    g.fillStyle = css('--brass'); g.textAlign = 'right'; g.fillText('age of the universe', W - 8, Y(Math.log10(4.35e17)) - 4); g.textAlign = 'left';
+    [100, 200, 300, 400, 500, 600].forEach(d => { g.fillStyle = css('--muted'); g.fillText(d, X(d) - 10, H - 8); });
+    g.fillText('digits', 4, H - 8);
+    g.fillText('time', 4, 16);
+    // trial division time
+    g.strokeStyle = css('--priv'); g.lineWidth = 2.4; g.beginPath();
+    for (let d = 4; d <= 620; d += 2) { const v = lgTrial(d) - 9; d === 4 ? g.moveTo(X(d), Y(v)) : g.lineTo(X(d), Y(v)); }
+    g.stroke();
+    // multiplication time (digits² ops at 10⁹/s)
+    g.strokeStyle = css('--pub'); g.beginPath();
+    for (let d = 4; d <= 620; d += 2) { const v = 2 * Math.log10(d) - 9; d === 4 ? g.moveTo(X(d), Y(v)) : g.lineTo(X(d), Y(v)); }
+    g.stroke();
+    g.fillStyle = css('--pub'); g.fillText('multiplying p·q', X(300), Y(-4) - 14);
+    g.fillStyle = css('--priv'); g.fillText('trial division', X(200), Y(lgTrial(200) - 9) - 16);
+    // marker
+    const v = lgTrial(D) - 9;
+    g.fillStyle = css('--priv'); g.beginPath(); g.arc(X(D), Y(v), 5.5, 0, 7); g.fill();
+    g.strokeStyle = css('--brass'); g.setLineDash([3, 4]); g.beginPath(); g.moveTo(X(D), 10); g.lineTo(X(D), H - B); g.stroke(); g.setLineDash([]);
+
+    $('mulV').textContent = (D * D).toLocaleString('en');
+    $('trialV').textContent = fmtBig(lgTrial(D));
+    const [t, s] = fmtTime(v); $('timeV').textContent = t; $('timeS').textContent = s;
+  }
+
+  // ---- hero lock ----
+  let locked = false;
+  function heroText() {
+    const n = 3233, e0 = 17, d0 = 2753;
+    const word = 'HELLO';
+    if (!locked) return word;
+    return word.split('').map(ch => modpow(code(ch), e0, n).r).join(' ');
+  }
+  $('heroClose').onclick = () => {
+    locked = true; $('lock').classList.remove('open'); $('heroFace').textContent = heroText();
+    $('heroClose').disabled = true; $('heroOpen').disabled = false;
+    $('heroNote').textContent = 'Shut with n = 3233 and e = 17: the code m of each letter became mᵉ mod n, a number nobody can turn back without d.';
+  };
+  $('heroOpen').onclick = () => {
+    locked = false; $('lock').classList.add('open'); $('heroFace').textContent = heroText();
+    $('heroClose').disabled = false; $('heroOpen').disabled = true;
+    $('heroNote').textContent = 'Opened with d = 2753: each number raised to d mod 3233 is its letter again.';
+  };
+
+  $('msg').oninput = render; $('wrong').onchange = render; $('dig').oninput = drawGrowth;
+  addEventListener('resize', drawGrowth);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+  render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The test is 99% accurate. Should you worry?</title>
+<style>
+  :root {
+    --bg: #eef1f4; --card: #ffffff; --ink: #121821; --muted: #5d6877; --faint: #9aa4b1; --rule: #d9dfe6;
+    --tp: #d93b30; --fn: #2f6fd0; --fp: #e39a00; --tn: #c3cad3; --ok: #2f8f5b;
+    --shadow: 0 1px 2px rgba(18,24,33,.06), 0 12px 32px -20px rgba(18,24,33,.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1217; --card: #161c24; --ink: #e8edf3; --muted: #9aa6b5; --faint: #5d6877; --rule: #263040;
+      --tp: #ff6a5c; --fn: #6aa5ff; --fp: #ffbf3c; --tn: #3a4452; --ok: #5cc98d;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px -20px rgba(0,0,0,.9);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); color: var(--ink); }
+  body { margin: 0; font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; padding: 48px 24px 96px; }
+  .mono, output, .num { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .kicker { font: 700 12px/1 ui-monospace, Menlo, monospace; letter-spacing: .18em; text-transform: uppercase; color: var(--fn); }
+  h1 { font: 800 clamp(34px, 5.4vw, 60px)/1.04 "Avenir Next", "Helvetica Neue", system-ui, sans-serif; letter-spacing: -0.03em; margin: 14px 0 22px; max-width: 900px; }
+  h1 .hl { background: linear-gradient(transparent 80%, color-mix(in srgb, var(--fp) 55%, transparent) 80%); }
+  h2 { font: 800 32px/1.15 "Avenir Next", "Helvetica Neue", system-ui, sans-serif; letter-spacing: -0.02em; margin: 6px 0 12px; }
+  p, li { max-width: 700px; }
+  section { margin-top: 80px; }
+  .card { background: var(--card); border: 1px solid var(--rule); border-radius: 18px; padding: 22px; box-shadow: var(--shadow); margin: 20px 0; }
+  .strip { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 0; overflow: hidden; }
+  .strip > div { padding: 22px; }
+  .strip > div + div { border-left: 1px dashed var(--rule); }
+  @media (max-width: 700px) { .strip { grid-template-columns: 1fr; } .strip > div + div { border-left: 0; border-top: 1px dashed var(--rule); } }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 28px; }
+  .ctl label { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); }
+  .ctl output { font-weight: 700; color: var(--ink); font-size: 14px; }
+  input[type=range] { width: 100%; accent-color: var(--fn); margin-top: 6px; }
+  button { font: 600 14px system-ui, sans-serif; padding: 9px 16px; border-radius: 10px; border: 1px solid var(--rule); background: var(--card); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button:disabled { opacity: .35; cursor: default; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .big { font: 800 64px/1 ui-monospace, Menlo, monospace; letter-spacing: -0.04em; }
+  .reveal { transition: opacity .5s, transform .5s; }
+  .hidden { opacity: 0; transform: translateY(8px); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 14px; }
+  .stat { background: color-mix(in srgb, var(--bg) 60%, transparent); border-radius: 12px; padding: 12px 14px; }
+  .stat b { display: block; font: 800 28px/1.1 ui-monospace, Menlo, monospace; letter-spacing: -0.02em; }
+  .stat span { font-size: 13px; color: var(--muted); }
+  .key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; margin-top: 12px; }
+  .key span { display: inline-flex; gap: 6px; align-items: center; }
+  .key i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  svg text { font: 12px ui-monospace, Menlo, Consolas, monospace; fill: var(--faint); }
+  .person { transition: transform .6s cubic-bezier(.3,.7,.2,1), fill .3s; }
+  .switch { display: inline-flex; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); cursor: pointer; }
+  .formula { font: 15px/1.7 ui-monospace, Menlo, monospace; background: color-mix(in srgb, var(--fn) 9%, transparent); border-radius: 12px; padding: 14px 16px; margin-top: 14px; overflow-x: auto; }
+  .formula .res { font-size: 22px; font-weight: 800; color: var(--fn); }
+  .bars .bar { display: grid; grid-template-columns: 170px 1fr 70px; gap: 12px; align-items: center; margin: 8px 0; font-size: 14px; color: var(--muted); }
+  .bars .track { height: 16px; border-radius: 8px; background: color-mix(in srgb, var(--faint) 20%, transparent); overflow: hidden; }
+  .bars .fill { height: 100%; border-radius: 8px; transition: width .6s cubic-bezier(.3,.7,.2,1), background .3s; }
+  .bars b { font: 700 14px ui-monospace, Menlo, monospace; color: var(--ink); text-align: right; }
+  .note { font-size: 14px; color: var(--muted); }
+  .tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 12px; padding: 4px 8px; border-radius: 6px; opacity: 0; transition: opacity .15s; }
+  .drag { cursor: ew-resize; }
+  .summary li { margin: 10px 0; }
+</style>
+</head>
+<body>
+<main>
+  <div class="kicker">An interactive explainer</div>
+  <h1>The test is <span class="hl">99% accurate</span>. You tested positive. Should you worry?</h1>
+  <p>A screening test for a rare condition comes back positive. The leaflet says the test is 99% accurate: it catches 99 of every 100 people who have the condition, and clears 99 of every 100 who don't. So what is the chance you actually have it?</p>
+  <p>Most people, and in surveys most doctors, say about 99%. Make your own guess before reading on.</p>
+
+  <div class="card strip">
+    <div>
+      <div class="note">1 in 100 people tested have the condition</div>
+      <div class="ctl" style="margin-top:10px"><label>Chance I have it <output id="guesso"></output></label><input id="guess" type="range" min="0" max="100" step="1" value="90"></div>
+      <div class="btns" style="margin-top:12px"><button class="primary" id="show">Show me</button><button id="hide" disabled>Hide</button></div>
+    </div>
+    <div>
+      <div id="pre" class="note">A positive result on a 99% accurate test, for a condition 1 in 100 people have.</div>
+      <div id="ans" class="reveal hidden" style="display:none">
+        <div class="note">Chance you have it</div>
+        <div class="big" style="color:var(--fn)"><span id="count">0</span>%</div>
+        <div class="note" id="verdict"></div>
+      </div>
+    </div>
+  </div>
+  <p>A coin flip. Not because the test is bad, but because the condition is rare. The rest of this page shows why, with a thousand people you can count.</p>
+
+  <section>
+    <div class="kicker">Part one</div>
+    <h2>A thousand people</h2>
+    <p>Below are 1,000 people who take the test. Set how common the condition is (the <b>prevalence</b>, also called the base rate) and how good the test is. The <b>sensitivity</b> is the share of sick people it catches; the <b>specificity</b> is the share of healthy people it correctly clears.</p>
+    <div class="card">
+      <div class="controls">
+        <div class="ctl"><label>Prevalence <output id="prevo"></output></label><input id="prev" type="range" min="0.1" max="50" step="0.1" value="1"></div>
+        <div class="ctl"><label>Sensitivity <output id="senso"></output></label><input id="sens" type="range" min="50" max="100" step="0.5" value="99"></div>
+        <div class="ctl"><label>Specificity <output id="speco"></output></label><input id="spec" type="range" min="80" max="99.9" step="0.1" value="99"></div>
+      </div>
+      <div style="margin:16px 0 10px"><label class="switch"><input type="checkbox" id="byResult"> Line them up by test result</label></div>
+      <svg id="grid" viewBox="0 0 960 600"></svg>
+      <div class="key">
+        <span><i style="background:var(--tp)"></i><b id="kTP"></b>&nbsp;sick, test positive</span>
+        <span><i style="background:var(--fn)"></i><b id="kFN"></b>&nbsp;sick, missed</span>
+        <span><i style="background:var(--fp)"></i><b id="kFP"></b>&nbsp;healthy, false alarm</span>
+        <span><i style="background:var(--tn)"></i><b id="kTN"></b>&nbsp;healthy, cleared</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="sPos"></b><span>positive results</span></div>
+        <div class="stat"><b id="sTP" style="color:var(--tp)"></b><span>…of whom are sick</span></div>
+        <div class="stat"><b id="sPost"></b><span>chance a positive is sick</span></div>
+      </div>
+    </div>
+    <p>Look at the people with a positive result: the red ones and the yellow ones. When the condition is rare, the healthy crowd is so large that even a tiny error rate among them produces as many false alarms as there are real cases. Turn on <i>Line them up by test result</i> and count.</p>
+  </section>
+
+  <section>
+    <div class="kicker">Part two</div>
+    <h2>The natural-frequency tree</h2>
+    <p>The same thousand people, split twice: first by whether they are sick, then by what the test says. Only the two "test positive" branches matter to someone holding a positive result.</p>
+    <div class="card">
+      <svg id="tree" viewBox="0 0 960 300"></svg>
+      <div class="formula">
+        <div style="color:var(--muted)">P(sick | positive) = sick positives / all positives</div>
+        <div class="res" id="fRes"></div>
+        <div style="color:var(--muted);font-size:13px" id="fBayes"></div>
+      </div>
+    </div>
+    <p>This is all of Bayes' theorem: a probability after the evidence is the share of the people <i>with that evidence</i> who are sick. Counting people instead of multiplying percentages is the trick: researchers who give doctors the question as natural frequencies ("10 out of 1,000") get far more right answers than with percentages.</p>
+  </section>
+
+  <section>
+    <div class="kicker">Part three</div>
+    <h2>Test again</h2>
+    <p>You have one positive result, and the chance of being sick that Part two worked out (50% at the starting settings). A second, independent test starts from there: <b>today's posterior is tomorrow's prior.</b> Add results one at a time and watch the probability move.</p>
+    <div class="card">
+      <div class="btns"><button class="primary" id="addPos">Another positive</button><button id="addNeg">A negative</button><button id="reset" disabled>Start over</button></div>
+      <div class="bars" id="bars" style="margin-top:14px"></div>
+      <p class="note mono" id="lr" style="color:var(--fn)"></p>
+      <p class="note" id="seqNote"></p>
+    </div>
+    <p>Each positive multiplies the <i>odds</i> of being sick by the same factor, the likelihood ratio sensitivity / (1 − specificity), which is 99 for a 99/99 test. One positive takes 1 : 99 odds to about 1 : 1; a second takes 1 : 1 to about 99 : 1. This is why a positive screening result is followed by a different, confirmatory test rather than a diagnosis. (It only works if the two tests' errors are independent: the same test repeated on a person whose body fools it will be fooled twice.)</p>
+  </section>
+
+  <section>
+    <div class="kicker">Part four</div>
+    <h2>It depends on who is tested</h2>
+    <p>The same test means different things in different crowds. Screening everyone, the prevalence is low and positives are often false; testing people with symptoms, the prevalence is high and a positive is convincing. The chart sweeps the prevalence from 1 in 10,000 to everyone, for the test you set above. <b>Drag the vertical line</b> to change the prevalence.</p>
+    <div class="card">
+      <svg id="sweep" viewBox="0 0 960 300"></svg>
+      <div class="key">
+        <span><i style="background:var(--tp)"></i>chance a positive is sick</span>
+        <span><i style="background:var(--fn)"></i>chance a negative is sick (missed)</span>
+        <span class="note" id="lineNote"></span>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="w1" style="color:var(--tp)"></b><span>positive → sick</span></div>
+        <div class="stat"><b id="w2" style="color:var(--fn)"></b><span>negative → still sick</span></div>
+        <div class="stat"><b id="w3"></b><span>prevalence where a positive is a coin flip</span></div>
+      </div>
+    </div>
+    <p>Drag the specificity up from 99% to 99.9% and watch the red curve shift left by a factor of ten: for screening a rare condition, the false-positive rate matters far more than catching every case. A positive is a coin flip exactly where the prevalence equals (1 − specificity) / (sensitivity + 1 − specificity), about 1% for a 99/99 test.</p>
+    <div class="card" style="padding:16px 22px">
+      <div class="controls">
+        <div class="ctl"><label>Prevalence <output id="prevo2"></output></label><input id="prev2" type="range" min="0.1" max="50" step="0.1" value="1"></div>
+        <div class="ctl"><label>Specificity <output id="speco2"></output></label><input id="spec2" type="range" min="80" max="99.9" step="0.1" value="99"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What you just saw</h2>
+    <div class="card summary"><ul>
+      <li><b>Accuracy is not the answer.</b> "99% accurate" describes the test; the chance that <i>you</i> are sick also depends on how common the condition is among people like you.</li>
+      <li><b>Count people, not percentages.</b> Of 1,000 people with a 1% condition, about 10 are sick and test positive, and about 10 healthy people test positive too. Half the positives are false.</li>
+      <li><b>Bayes' theorem</b> is that count written as a formula: P(sick | +) = sick positives / all positives.</li>
+      <li><b>Evidence accumulates.</b> The posterior after one test is the prior for the next; two independent positives make it close to certain, and one negative undoes a lot.</li>
+      <li><b>Who is tested matters</b> as much as the test. Low prevalence plus imperfect specificity means many false alarms.</li>
+    </ul></div>
+  </section>
+</main>
+<div class="tip" id="tip"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+const r1 = x => Math.round(x * 10) / 10;
+const st = { prev: 0.01, sens: 0.99, spec: 0.99, byResult: false, seq: [] };
+
+function counts() {
+  const sick = Math.round(1000 * st.prev), TP = Math.round(sick * st.sens), FN = sick - TP;
+  const FP = Math.round((1000 - sick) * (1 - st.spec)), TN = 1000 - sick - FP;
+  const post = st.prev * st.sens / (st.prev * st.sens + (1 - st.prev) * (1 - st.spec));
+  return { sick, TP, FN, FP, TN, post };
+}
+const ppvAt = p => p * st.sens / (p * st.sens + (1 - p) * (1 - st.spec));
+const fnAt = p => p * (1 - st.sens) / (p * (1 - st.sens) + (1 - p) * st.spec);
+const update = (p, r) => r === '+' ? ppvAt(p) : fnAt(p);
+
+// ---------- hook ----------
+$('guess').oninput = e => $('guesso').textContent = e.target.value + '%';
+$('guesso').textContent = '90%';
+$('show').onclick = () => {
+  const g = +$('guess').value;
+  $('pre').style.display = 'none'; $('ans').style.display = '';
+  requestAnimationFrame(() => $('ans').classList.remove('hidden'));
+  const t0 = performance.now();
+  const tick = now => { const k = Math.min(1, (now - t0) / 900); $('count').textContent = Math.round(99 - 49 * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+  $('verdict').textContent = Math.abs(g - 50) <= 5 ? 'Spot on. Most people are far too high.' : g > 50 ? `You guessed ${g}%: ${g - 50} points too high, like most people.` : `You guessed ${g}%: too low, which is rarer.`;
+  $('show').disabled = true; $('hide').disabled = false;
+};
+$('hide').onclick = () => { $('ans').classList.add('hidden'); $('ans').style.display = 'none'; $('pre').style.display = ''; $('show').disabled = false; $('hide').disabled = true; };
+
+// ---------- the grid: 1,000 people that move between places ----------
+const COLS = 40, ROWS = 25, CW = 960 / COLS, CH = 600 / ROWS;
+const people = [];
+(function build() {
+  const svg = $('grid');
+  for (let i = 0; i < 1000; i++) {
+    const g = el('g', { class: 'person' }, svg);
+    el('circle', { cx: CW / 2, cy: CH * 0.3, r: CH * 0.17 }, g);
+    el('rect', { x: CW / 2 - CH * 0.26, y: CH * 0.5, width: CH * 0.52, height: CH * 0.36, rx: CH * 0.16 }, g);
+    g.addEventListener('mouseenter', e => { const t = $('tip'); t.textContent = g.dataset.label; t.style.opacity = 1; });
+    g.addEventListener('mousemove', e => { const t = $('tip'); t.style.left = e.clientX + 12 + 'px'; t.style.top = e.clientY + 12 + 'px'; });
+    g.addEventListener('mouseleave', () => $('tip').style.opacity = 0);
+    people.push(g);
+  }
+})();
+const KIND = { TP: ['var(--tp)', 'sick · tested positive'], FN: ['var(--fn)', 'sick · missed by the test'], FP: ['var(--fp)', 'healthy · false alarm'], TN: ['var(--tn)', 'healthy · cleared'] };
+function drawGrid(c) {
+  // each person keeps an identity: who is sick never changes with the ordering, only where they stand
+  const kinds = [];
+  ['TP', 'FN', 'FP', 'TN'].forEach(k => { for (let i = 0; i < c[k]; i++) kinds.push(k); });
+  const order = st.byResult ? ['TP', 'FP', 'FN', 'TN'] : ['TP', 'FN', 'FP', 'TN'];
+  const slot = {}; let at = 0; order.forEach(k => { slot[k] = at; at += c[k]; });
+  kinds.forEach((k, i) => {
+    const pos = slot[k]++, g = people[i];
+    g.style.transform = `translate(${(pos % COLS) * CW}px, ${Math.floor(pos / COLS) * CH}px)`;
+    g.style.fill = KIND[k][0]; g.dataset.label = KIND[k][1];
+  });
+}
+
+// ---------- the tree ----------
+function drawTree(c) {
+  const svg = $('tree'); svg.innerHTML = '';
+  const W = 960, rows = [40, 150, 260];
+  const nodes = [
+    { x: 480, y: rows[0], n: 1000, t: 'people tested', col: 'var(--ink)' },
+    { x: 240, y: rows[1], n: c.sick, t: `have it (${r1(st.prev * 100)}%)`, col: 'var(--tp)' },
+    { x: 720, y: rows[1], n: 1000 - c.sick, t: `don't (${r1(100 - st.prev * 100)}%)`, col: 'var(--ink)' },
+    { x: 120, y: rows[2], n: c.TP, t: 'test positive', col: 'var(--tp)', hot: true },
+    { x: 360, y: rows[2], n: c.FN, t: 'test negative', col: 'var(--fn)' },
+    { x: 600, y: rows[2], n: c.FP, t: 'test positive', col: 'var(--fp)', hot: true },
+    { x: 840, y: rows[2], n: c.TN, t: 'test negative', col: 'var(--muted)' },
+  ];
+  const links = [[0, 1], [0, 2], [1, 3], [1, 4], [2, 5], [2, 6]];
+  links.forEach(([a, b]) => {
+    const A = nodes[a], B = nodes[b], wd = 1.5 + 22 * Math.sqrt(B.n / 1000);
+    el('path', { d: `M${A.x},${A.y + 26} C${A.x},${(A.y + B.y) / 2} ${B.x},${(A.y + B.y) / 2} ${B.x},${B.y - 26}`, fill: 'none', stroke: B.hot ? B.col : 'var(--faint)', 'stroke-opacity': B.hot ? .55 : .35, 'stroke-width': wd, 'stroke-linecap': 'round' }, svg);
+  });
+  nodes.forEach(N => {
+    el('rect', { x: N.x - 92, y: N.y - 26, width: 184, height: 52, rx: 12, fill: 'var(--card)', stroke: N.hot ? N.col : 'var(--rule)', 'stroke-width': N.hot ? 2.5 : 1 }, svg);
+    const t1 = el('text', { x: N.x, y: N.y - 2, 'text-anchor': 'middle', style: `font-size:20px;font-weight:800;fill:${N.col}` }, svg); t1.textContent = N.n.toLocaleString('en-US');
+    const t2 = el('text', { x: N.x, y: N.y + 17, 'text-anchor': 'middle', style: 'font-family:system-ui;font-size:12px;fill:var(--muted)' }, svg); t2.textContent = N.t;
+  });
+  $('fRes').textContent = `= ${c.TP} / (${c.TP} + ${c.FP}) ≈ ${r1(c.post * 100)}%`;
+  const f = (x, d) => +x.toFixed(d);
+  $('fBayes').textContent = `Bayes' theorem says the same with probabilities: P(sick | +) = P(+ | sick)·P(sick) / P(+) = ${f(st.sens, 3)} × ${f(st.prev, 4)} / (${f(st.sens, 3)} × ${f(st.prev, 4)} + ${f(1 - st.spec, 4)} × ${f(1 - st.prev, 4)})`;
+}
+
+// ---------- test again ----------
+function drawBars() {
+  const all = ['+', ...st.seq], ps = [st.prev];
+  all.forEach(r => ps.push(update(ps[ps.length - 1], r)));
+  const box = $('bars');
+  while (box.children.length > ps.length) box.removeChild(box.lastChild);
+  while (box.children.length < ps.length) {
+    const d = document.createElement('div'); d.className = 'bar';
+    d.innerHTML = '<span></span><div class="track"><div class="fill" style="width:0"></div></div><b></b>';
+    box.appendChild(d);
+  }
+  ps.forEach((p, i) => {
+    const row = box.children[i];
+    row.children[0].textContent = i === 0 ? 'before any test' : `after test ${i} (${all[i - 1]})`;
+    const fill = row.querySelector('.fill');
+    requestAnimationFrame(() => { fill.style.width = Math.max(0.4, p * 100) + '%'; });
+    fill.style.background = i === 0 ? 'var(--faint)' : p >= 0.5 ? 'var(--tp)' : 'var(--fn)';
+    row.children[2].textContent = (p < 0.001 ? '<0.1' : r1(p * 100)) + '%';
+  });
+  $('lr').textContent = `Each positive multiplies the odds by ${r1(st.sens / (1 - st.spec))}, each negative by ${+((1 - st.sens) / st.spec).toFixed(4)}.`;
+  const last = ps[ps.length - 1];
+  $('seqNote').textContent = last > 0.95 ? 'Two or three positives in a row make it close to certain.' : st.seq.includes('−') ? 'A single negative pulls the probability most of the way back down.' : 'Press Another positive and see how fast it climbs.';
+  $('addPos').disabled = $('addNeg').disabled = st.seq.length >= 5;
+  $('reset').disabled = st.seq.length === 0;
+}
+$('addPos').onclick = () => { st.seq.push('+'); drawBars(); };
+$('addNeg').onclick = () => { st.seq.push('−'); drawBars(); };
+$('reset').onclick = () => { st.seq = []; drawBars(); };
+
+// ---------- sweep ----------
+const SW = 960, SH = 300, L = 58, R = 16, T = 14, B = 34;
+const X = l => L + (SW - L - R) * (l + 4) / 4, Y = v => T + (SH - T - B) * (1 - v);
+function drawSweep(c) {
+  const svg = $('sweep'); svg.innerHTML = '';
+  [0, .25, .5, .75, 1].forEach(v => { el('line', { x1: L, x2: SW - R, y1: Y(v), y2: Y(v), stroke: 'var(--rule)' }, svg); el('text', { x: L - 8, y: Y(v) + 4, 'text-anchor': 'end' }, svg).textContent = Math.round(v * 100) + '%'; });
+  ['0.01%', '0.1%', '1%', '10%', '100%'].forEach((t, k) => el('text', { x: X(k - 4), y: SH - 10, 'text-anchor': 'middle' }, svg).textContent = t);
+  const ls = Array.from({ length: 81 }, (_, k) => -4 + k * 0.05);
+  const pth = f => 'M' + ls.map(l => X(l).toFixed(1) + ',' + Y(f(Math.pow(10, l))).toFixed(1)).join('L');
+  el('path', { d: pth(ppvAt), fill: 'none', stroke: 'var(--tp)', 'stroke-width': 3.2 }, svg);
+  el('path', { d: pth(fnAt), fill: 'none', stroke: 'var(--fn)', 'stroke-width': 2 }, svg);
+  const lp = Math.log10(st.prev), neg = fnAt(st.prev);
+  el('line', { x1: X(lp), x2: X(lp), y1: T, y2: SH - B, stroke: 'var(--ink)', 'stroke-opacity': .35, 'stroke-width': 1.5 }, svg);
+  el('circle', { cx: X(lp), cy: Y(c.post), r: 7, fill: 'var(--tp)', stroke: 'var(--card)', 'stroke-width': 2 }, svg);
+  el('circle', { cx: X(lp), cy: Y(neg), r: 5, fill: 'var(--fn)' }, svg);
+  el('text', { x: X(lp) + 10, y: Y(c.post) - 8, style: 'fill:var(--tp);font-weight:700' }, svg).textContent = r1(c.post * 100) + '%';
+  const hit = el('rect', { x: X(lp) - 14, y: T, width: 28, height: SH - T - B, fill: 'transparent', class: 'drag' }, svg);
+  hit.addEventListener('pointerdown', e => {
+    hit.setPointerCapture(e.pointerId);
+    const rect = svg.getBoundingClientRect();
+    const move = ev => { const x = (ev.clientX - rect.left) * SW / rect.width; const l = -4 + (x - L) / (SW - L - R) * 4; setPrev(Math.max(0.1, Math.min(50, r1(Math.pow(10, l) * 100)))); };
+    hit.addEventListener('pointermove', move);
+    hit.addEventListener('pointerup', () => hit.removeEventListener('pointermove', move), { once: true });
+  });
+  $('lineNote').textContent = `the line: your prevalence, ${r1(st.prev * 100)}%`;
+  $('w1').textContent = r1(c.post * 100) + '%';
+  $('w2').textContent = (neg < 0.0001 ? '<0.01' : +(neg * 100).toFixed(2)) + '%';
+  $('w3').textContent = +((1 - st.spec) / (st.sens + 1 - st.spec) * 100).toFixed(2) + '%';
+}
+
+// ---------- wiring ----------
+function render() {
+  const c = counts();
+  ['prevo', 'prevo2'].forEach(id => $(id).textContent = r1(st.prev * 100) + '%');
+  $('senso').textContent = r1(st.sens * 100) + '%';
+  ['speco', 'speco2'].forEach(id => $(id).textContent = r1(st.spec * 100) + '%');
+  ['TP', 'FN', 'FP', 'TN'].forEach(k => $('k' + k).textContent = c[k]);
+  $('sPos').textContent = c.TP + c.FP; $('sTP').textContent = c.TP;
+  $('sPost').textContent = r1(c.post * 100) + '%';
+  $('sPost').style.color = c.post < 0.5 ? 'var(--fp)' : 'var(--fn)';
+  drawGrid(c); drawTree(c); drawBars(); drawSweep(c);
+}
+function setPrev(p) { st.prev = p / 100; $('prev').value = $('prev2').value = p; render(); }
+function setSpec(s) { st.spec = s / 100; $('spec').value = $('spec2').value = s; render(); }
+['prev', 'prev2'].forEach(id => $(id).addEventListener('input', e => setPrev(+e.target.value)));
+['spec', 'spec2'].forEach(id => $(id).addEventListener('input', e => setSpec(+e.target.value)));
+$('sens').addEventListener('input', e => { st.sens = e.target.value / 100; render(); });
+$('byResult').addEventListener('change', e => { st.byResult = e.target.checked; render(); });
+render();
+</script>
+</body>
+</html>

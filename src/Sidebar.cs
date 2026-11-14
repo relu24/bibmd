@@ -89,6 +89,8 @@ public sealed partial class App
         var panel = _sidebar && _sideFocus ? Panels[(Array.IndexOf(Panels, _panel) + by + Panels.Length) % Panels.Length] : _panel;
         _sidebar = _sideFocus = true;
         SetPanel(panel);
+        // The page's own menu takes the keys itself.
+        if (Bare) { _sideFocus = false; _panelFocus++; }
     }
 
     // A panel shown: its cursor on where the page is, the heading being read or the version shown.
@@ -324,6 +326,7 @@ public sealed partial class App
 
     private void GoToVersion(int index)
     {
+        if (Live) { Flash(LiveUndo); return; }
         int count = doc.History.Count;
         if (Editing) FinishEdit();
         if (doc.History.Count != count) return;   // the block put back was a version of its own, and the ones after are gone

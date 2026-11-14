@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- bibmd on iPhone and iPad: the reader's own sources (../src, without the Wayland
+       Program.cs) in a UIKit app on Bibui.Platform.iOS, drawn by the managed rasterizer.
+       Builds on a Mac only (the iOS workload and Xcode), after the bibui checkout's
+       bibui-platform-ios/native/build.sh:
+
+         dotnet build ios/bibmd-ios.csproj -t:Run      # the simulator
+
+       On Linux, ios/typecheck compiles the same sources against the iOS reference assembly. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+    <AssemblyName>bibmd-ios</AssemblyName>
+    <RootNamespace>BibMd</RootNamespace>
+    <ApplicationId>app.bibmd</ApplicationId>
+    <ApplicationTitle>bibmd</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Release is NativeAOT, as the desktop binary is. -->
+    <PublishAot Condition="'$(Configuration)' == 'Release'">true</PublishAot>
+  </PropertyGroup>
+  <PropertyGroup>
+    <BibDocRoot Condition="'$(BibDocRoot)' == ''">$(MSBuildThisFileDirectory)../../bibdoc</BibDocRoot>
+    <!-- bibui as bibmd builds it (the integration checkout): bibui-platform-ios is not released. -->
+    <BibuiSource Condition="'$(BibuiSource)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../bibui-bib-agent'))</BibuiSource>
+    <BibuiIosNativeDir>$(BibuiSource)/bibui-platform-ios/native/lib/</BibuiIosNativeDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="typecheck/**" />
+    <Compile Include="../src/**/*.cs" Exclude="../src/Program.cs" />
+    <EmbeddedResource Include="../assets/fonts/*.ttf" LogicalName="%(Filename)%(Extension)" />
+    <!-- The document it opens first, copied into the app's Documents (the Files app shows them). -->
+    <BundleResource Include="../samples/sourdough.bib.md" LogicalName="sourdough.bib.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(BibDocRoot)/src/BibDoc/BibDoc.csproj" />
+    <ProjectReference Include="$(BibuiSource)/bibui-core/bibui-core.csproj" />
+    <ProjectReference Include="$(BibuiSource)/bibui-platform-ios/bibui-platform-ios.csproj" />
+    <ProjectReference Include="$(BibuiSource)/bibui-raster-managed/backend/Bibui.Raster.Managed.Backend.csproj" />
+  </ItemGroup>
+  <Import Project="$(BibuiSource)/bibui-platform-ios/buildTransitive/Bibui.Platform.iOS.targets" />
+</Project>

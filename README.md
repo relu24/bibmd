@@ -73,7 +73,7 @@ every frame, and a widget draws where it is called and returns its value.
 ````markdown
 ---
 data:
-  vendors: [{ name: Northwind, price: 41000 }, { name: Fabrikam, price: 45250 }]
+  vendors: [{ name: Northwind, price: 4100 }, { name: Fabrikam, price: 4525 }]
 ---
 ```bib
 let units = slider("Units", 1, 10, value: 2)
@@ -148,7 +148,14 @@ PKGBUILD (`packaging/aur/bibmd-bin`) takes its pkgver and sha256, and
 
 `web/` is bibmd as a web page: the same sources (without the Wayland `Program.cs`) built as a
 .NET WebAssembly app on bibui's browser platform, drawn by the managed rasterizer on a
-`<canvas>`. It reads; Ctrl+L unlocks editing in the page, Ctrl+S downloads the file as it is.
+`<canvas>`. It reads; Read / Write in its bar (or Ctrl+L) unlocks editing, Ctrl+S downloads the file as it is.
+
+The canvas draws only the document. Everything around it is the page's own HTML (`web/wwwroot/chrome.js`):
+the bar, the section strip, the menu on the left (contents, history, keys), the insert and block menu and
+the notes. `App.Bare` leaves those out of the canvas; each frame the app says what they show
+(`App.HostState`, as JSON, when it changes) and the page sends back what is pressed (`Viewer.Command` and
+the rest, `src/Host.cs`). The keys do as on the desktop: Ctrl+B opens the page's menu, / its insert menu.
+Hosted, the bar is the app's page's: the state goes out to it and its buttons come back by `postMessage`.
 
     web/build.sh                                  # publishes web/dist, static files
     python3 -m http.server 8000 -d web/dist       # http://localhost:8000/?doc=samples/vendor-choice.bib.md

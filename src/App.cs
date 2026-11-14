@@ -38,6 +38,7 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
     private int _typingAt;
     private DateTime _lastTyped;
     private bool _unsaved, _forceStep;
+    private bool _finishNext;                  // Escape came in the same frame as typing: finish once the editor has the text
 
     // ── Reading ──────────────────────────────────────────────────────────────
     private int _sel;                          // the selected block
@@ -150,18 +151,19 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
     public void Build()
     {
         FollowTheme();
+        if (_finishNext) { _finishNext = false; FinishEdit(); }
         HandleKeys();
         if (_unsaved && DateTime.Now - _lastTyped >= AutosaveAfter) SaveTyping();
         if (doc.Blocks.Count > 0) _sel = Math.Clamp(_sel, 0, doc.Blocks.Count - 1);
 
         var root = runtime.BeginParent(runtime.Column().Sized(Size.Fill, Size.Fill));
         var main = runtime.BeginParent(runtime.Row().Sized(Size.Fill, Size.Fill));
-        if (_sidebar) Sidebar();
+        if (_sidebar && !Bare) Sidebar();
 
         ReadFront();
         // The page, under the document's section strip when its front matter asks for one.
         var pane = runtime.BeginParent(runtime.Column().Sized(Size.Fill, Size.Fill));
-        if (!_sourceView) SectionStrip();
+        if (!_sourceView && !Bare) SectionStrip();
         Box page = runtime.BoxFromId("page",
             InteractionKinds.ViewScrollY | InteractionKinds.ClampY | InteractionKinds.Clip | InteractionKinds.LeftPress);
         page.ChildLayoutAxis = LayoutAxis.Y;
@@ -184,7 +186,7 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         content.Sized(Size.Fill, Size.Fit);
         _content = content;
         runtime.BeginParent(content);
-        runtime.Gap(TopGutter);
+        runtime.Gap(Narrow(room) || Bare ? TopGutter / 2f : TopGutter);
         var row = runtime.BeginParent(runtime.Row().Sized(Size.Fill));
         runtime.Gap(left);
         var col = runtime.BeginParent(runtime.Column().Sized(Size.Px(column)));
@@ -201,6 +203,12 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
                     Editor();
                     first = false;
                 }
+                if (WritingBefore(i) is { } writer)
+                {
+                    if (!first) runtime.Gap(MathF.Round(body * 0.9f));
+                    NewView(writer, column);
+                    first = false;
+                }
                 if (i == blocks.Count) break;
                 var b = blocks[i];
                 // A bib data block is the document's data, not something to read: only the source view
@@ -209,6 +217,13 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
                 if (!first) runtime.Gap(_sourceView ? BlankLinesBefore(i) * LineHeight() : AfterEyebrow(i) ? MathF.Round(body * 0.25f) : GapBefore(b, body));
                 first = false;
                 if (!_isNew && i == _editing) { Editor(); continue; }
+                if (HeldBy(i) is { } holder)
+                {
+                    Box held = HeldView(i, holder, column);
+                    docBottom = held.Rect.Y + held.Extent.Y;
+                    Record(i, held);
+                    continue;
+                }
                 Box node = BlockView(i, b, column, out bool clicked);
                 if (clicked) clickedBlock = i;
                 docBottom = node.Rect.Y + node.Extent.Y;
@@ -227,10 +242,11 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         runtime.EndParent(pane);
         runtime.EndParent(main);
 
-        StatusLine();
-        if (_inserting) InsertMenu();
+        if (!Bare) StatusLine();
+        if (_inserting && !Bare) InsertMenu();
         runtime.EndParent(root);
         if (_reveal) Reveal(page);
+        else if (Editing || _bib.HasFocus) FollowCaret(page);
 
         // The page asks last, so the blocks and links on it take their own presses first.
         Interaction onPage = runtime.InteractionsFor(page);
@@ -353,6 +369,9 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
             if (held && !_pressAt.ContainsKey(i)) { _pressAt[i] = (text.X, text.Y); _showSel = false; }   // Ctrl+C copies the text, not the block
             else if (!held && _pressAt.Remove(i, out var at) && MathF.Abs(text.X - at.X) + MathF.Abs(text.Y - at.Y) < 5f)
                 textClicked = true;
+            // A finger's tap is pressed and let go in one frame, never seen held: the view says it was clicked.
+            else if (!held && md.TextClicked && !_pressAt.ContainsKey(i))
+                textClicked = true;
         }
         runtime.EndParent(wrap);
 
@@ -452,23 +471,35 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         Flash(_locked ? LockedNote : "Unlocked · click a block to edit it");
     }
 
-    private const float WideEdge = 16f;
+    private const float WideEdge = 16f, NarrowEdge = 6f;
+
+    // A page as narrow as a phone's: the column takes nearly all of it, its edge the blocks' own padding.
+    private static bool Narrow(float room) => room < 560f;
 
     // The column the page is laid out in, for a page <paramref name="room"/> wide.
-    private float ColumnFor(float room) => _sourceView ? MathF.Min(MaxColumn, room - 2f * SideGutter) : _width switch
+    private float ColumnFor(float room)
     {
-        "wide" => MathF.Min(1200f, room - 2f * WideEdge),
-        "full" => room - 2f * WideEdge,
-        double px => MathF.Min((float)px, room - 2f * WideEdge),
-        _ => MathF.Min(MaxColumn, room - 2f * SideGutter),
-    };
+        float side = Narrow(room) ? NarrowEdge : SideGutter, edge = Narrow(room) ? NarrowEdge : WideEdge;
+        return _sourceView ? MathF.Min(MaxColumn, room - 2f * side) : _width switch
+        {
+            "wide" => MathF.Min(1200f, room - 2f * edge),
+            "full" => room - 2f * edge,
+            double px => MathF.Min((float)px, room - 2f * edge),
+            _ => MathF.Min(MaxColumn, room - 2f * side),
+        };
+    }
 
     private void SectionStrip()
     {
         if (_nav.Count == 0) return;
         float room = _page is { } pg && pg.Extent.X > 0f ? pg.Extent.X : 960f;
         float column = ColumnFor(room);
-        var strip = runtime.BeginParent(runtime.Row().Sized(Size.Fill, Size.Px(48f)));
+        // Wider than the page (a phone), it scrolls sideways under a finger.
+        Box strip = runtime.BoxFromId("nav-strip", InteractionKinds.ViewScrollX | InteractionKinds.ClampX | InteractionKinds.Clip);
+        strip.ChildLayoutAxis = LayoutAxis.X;
+        strip.Sized(Size.Fill, Size.Px(48f));
+        strip.AllowOverflowX = true;
+        runtime.BeginParent(strip);
         strip.Style.Padding = EdgeInsets.Symmetric(horizontal: 0f, vertical: 9f);
         strip.Style.BorderColor = UiColor.Border;
         strip.Style.BorderWidth = 0f;
@@ -493,6 +524,8 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
             runtime.Gap(6f);
         }
         runtime.EndParent(strip);
+        // After the pills, which take their own presses: the strip only scrolls.
+        runtime.InteractionsFor(strip);
     }
 
     // The front matter, folded to one line (its title and what it holds) until it is unfolded.
@@ -525,7 +558,7 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         return line;
     }
 
-    // "Which supplier for the pilot run · data, effects": the title, then the other keys it sets.
+    // "Which printer for the office · data, effects": the title, then the other keys it sets.
     private static string FrontSummary(string source)
     {
         try
@@ -576,7 +609,7 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
     private static void OpenLink(string link)
     {
         if (LinkOpener is not null) { LinkOpener(link); return; }
-        if (OperatingSystem.IsBrowser()) return;
+        if (OperatingSystem.IsBrowser() || OperatingSystem.IsIOS() || OperatingSystem.IsMacCatalyst()) return;   // no process to start
         try
         {
             string file = link.Split('#')[0];
@@ -619,6 +652,26 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         page.TargetViewOffset = page.TargetViewOffset with { Y = MathF.Max(0f, at) };
     }
 
+    // While a block or a bib field edits, its caret stays on the page: as it moves (typing, the
+    // arrows), and as the page changes height (a phone's keyboard opening over it). Scrolling the
+    // page away from it leaves it be until it moves again.
+    private (float Top, float Height) _caretSeen;
+
+    private void FollowCaret(Box page)
+    {
+        if (runtime.TextInput is not { } input || _content is null || page.Extent.Y <= 0f) return;
+        // Both from last frame's layout: the caret's place in the content, whatever the scroll.
+        float top = input.Caret.Top - _content.Rect.Y, height = page.Extent.Y;
+        if ((top, height) == _caretSeen) return;
+        _caretSeen = (top, height);
+        const float Margin = 24f;
+        float at = page.TargetViewOffset.Y, bottom = top + input.Caret.Height;
+        if (bottom > at + height - Margin) at = bottom - height + Margin;
+        else if (top < at + Margin) at = top - Margin;
+        else return;
+        page.TargetViewOffset = page.TargetViewOffset with { Y = MathF.Max(0f, at) };
+    }
+
     // ── The editor ───────────────────────────────────────────────────────────
 
     private void Editor()
@@ -653,6 +706,7 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
     {
         var blocks = doc.Blocks;
         index = Math.Clamp(index, 0, blocks.Count);
+        if (!isNew && HeldBy(index) is { } holder) { Flash(holder.Name + " is editing this block"); return; }
         if (index == blocks.Count) isNew = true;
         string text = "";
         if (isNew) _editStart = _editEnd = index < blocks.Count ? blocks[index].Start : doc.Text.Length;
@@ -762,6 +816,7 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
     private void SaveTyping()
     {
         _unsaved = false;
+        if (LiveTyping()) return;
         if (Editing) doc.Save(Composed(_buffer.ToString()));
     }
 
@@ -775,7 +830,7 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
     {
         // A bib block's text input has the keyboard: it reads the keys itself, and Escape gives them back.
         if (_bib.HasFocus && !Editing) return;
-        bool swallowText = false;
+        bool swallowText = false, typed = false;
         foreach (var ev in runtime.UnconsumedEvents)
         {
             if (_inserting && (ev.Kind == BibUiEventKind.Text || ev.IsKeyDown)) { InsertMenuEvent(ev); continue; }
@@ -788,6 +843,7 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
                 {
                     // / in an empty block asks what to put there.
                     if (ch == '/' && _buffer.Length == 0) { ev.Eat(); OpenInsert(inBlock: true); }
+                    else typed = true;   // the editor takes it, later in this frame
                     continue;
                 }
                 ev.Eat();
@@ -795,6 +851,15 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
                 continue;
             }
             if (!ev.IsKeyDown) continue;
+            // Done, right after typing in the same frame: the editor hasn't taken that text yet (it reads
+            // this frame's text as it is built), so the block goes back at the start of the next frame.
+            if (Editing && typed && (ev.Key == Key.Escape || ev.Key == Key.Enter && ev.Ctrl))
+            {
+                ev.Eat();
+                _finishNext = true;
+                runtime.RequestFrame();
+                break;
+            }
             bool handled = GlobalKey(ev) || (Editing ? EditKey(ev) : _sidebar && _sideFocus && SideKey(ev) || ReadKey(ev));
             if (handled) { ev.Eat(); swallowText = ev.Ctrl; }
         }
@@ -1053,12 +1118,14 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
 
     private void DocUndo()
     {
+        if (Live) { Flash(LiveUndo); return; }
         Flash(doc.Undo() ? "Undo" : "Already at the oldest change");
         _reveal = true;
     }
 
     private void DocRedo()
     {
+        if (Live) { Flash(LiveUndo); return; }
         Flash(doc.Redo() ? "Redo" : "Already at the newest change");
         _reveal = true;
     }
@@ -1084,6 +1151,7 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
     {
         _flash = message;
         _flashAt = DateTime.Now;
+        _flashes++;
     }
 
     private void StatusLine()

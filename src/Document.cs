@@ -120,6 +120,12 @@ public sealed class Document
         return new(after, DateTime.Now, line.Length == 0 ? verb : verb + " \u201c" + line + "\u201d", added, removed);
     }
 
+    /// <summary>
+    /// A change made by someone else in a shared document: the text moves on, without a step in this
+    /// session's history (whose versions would put back what the others wrote).
+    /// </summary>
+    public void ApplyRemote(int start, int end, string text) => Set(Text[..start] + text + Text[end..]);
+
     private void Set(string text)
     {
         Text = text;

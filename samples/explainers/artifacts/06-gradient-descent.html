@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How a machine learns: rolling downhill</title>
+<style>
+  :root {
+    --bg: #f2efe6;
+    --card: #fbfaf5;
+    --ink: #17241d;
+    --muted: #5f6b62;
+    --faint: #a9b2a9;
+    --rule: #d9d6c8;
+    --land-lo: 32, 110, 84;     /* valley, rgb */
+    --land-hi: 236, 226, 196;   /* peaks */
+    --contour: rgba(23, 36, 29, 0.28);
+    --trail: #c4522a;
+    --trail-soft: rgba(196, 82, 42, 0.18);
+    --line: #2b6f8f;
+    --ok: #2f7d4f;
+    --warn: #b7791f;
+    --bad: #b33a2b;
+    --serif: "Charter", "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1411;
+      --card: #151d19;
+      --ink: #e6ece4;
+      --muted: #94a397;
+      --faint: #4b5a50;
+      --rule: #25312a;
+      --land-lo: 18, 70, 58;
+      --land-hi: 58, 66, 52;
+      --contour: rgba(230, 236, 228, 0.22);
+      --trail: #ff8a5b;
+      --trail-soft: rgba(255, 138, 91, 0.2);
+      --line: #6fc3e6;
+      --ok: #6cd394;
+      --warn: #f0b54a;
+      --bad: #ff7a66;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); }
+  body { margin: 0; color: var(--ink); font: 17px/1.6 var(--serif); }
+  main { max-width: 920px; margin: 0 auto; padding: 56px 28px 96px; }
+  .eyebrow { font: 600 12px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--trail); }
+  h1 { font: 700 clamp(38px, 6.4vw, 62px)/1.04 var(--sans); letter-spacing: -.035em; margin: 14px 0 16px; }
+  h1 span { color: var(--trail); }
+  h2 { font: 700 28px/1.2 var(--sans); letter-spacing: -.02em; margin: 0 0 8px; }
+  .lede { font-size: 21px; color: var(--muted); max-width: 680px; }
+  p { max-width: 700px; }
+  section { margin-top: 70px; }
+  .marker { display: inline-flex; align-items: center; gap: 10px; font: 600 12px var(--mono); color: var(--muted); letter-spacing: .12em; margin-bottom: 10px; }
+  .marker i { display: inline-block; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--trail); color: var(--trail); font-style: normal; text-align: center; line-height: 22px; }
+  .hook { margin-top: 30px; padding: 20px 24px; background: var(--card); border: 1px dashed var(--faint); border-radius: 14px; font-size: 19px; }
+  .panel { background: var(--card); border: 1px solid var(--rule); border-radius: 16px; padding: 18px; margin: 20px 0; }
+  canvas { display: block; width: 100%; }
+  .grid2 { display: grid; grid-template-columns: 1.25fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px 26px; align-items: center; margin-top: 14px; font: 14px var(--sans); }
+  .ctl { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 190px; }
+  .ctl label { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+  .ctl label b { font: 600 13px var(--mono); color: var(--ink); }
+  input[type=range] { width: 100%; accent-color: var(--trail); }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  button { font: 600 13px var(--sans); border-radius: 10px; padding: 8px 14px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--trail); color: #fff; border-color: var(--trail); }
+  button:hover { filter: brightness(1.07); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 14px; }
+  .stat { background: var(--bg); border-radius: 12px; padding: 10px 14px; }
+  .stat .l { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .stat .v { font: 600 24px/1.25 var(--sans); font-variant-numeric: tabular-nums; }
+  .stat .v small { font: 12px var(--mono); color: var(--muted); }
+  .pill { display: inline-block; font: 600 12px var(--sans); padding: 4px 10px; border-radius: 999px; margin-top: 12px; }
+  .pill.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .pill.warn { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+  .pill.bad { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+  .cap { font: 13px/1.5 var(--sans); color: var(--muted); margin-top: 8px; }
+  code, .m { font-family: var(--mono); font-size: .9em; }
+  .formula { font: 18px/1.6 var(--mono); background: var(--card); border-left: 3px solid var(--trail); padding: 12px 18px; border-radius: 0 10px 10px 0; margin: 16px 0; }
+  .closing { background: var(--card); border: 1px solid var(--rule); border-radius: 16px; padding: 24px 30px; }
+  .closing li { margin: 8px 0; }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Machine learning · an interactive explainer</div>
+  <h1>How a machine learns: <span>rolling downhill</span></h1>
+  <p class="lede">Strip away the jargon and most of machine learning is one move, repeated: measure how
+    wrong you are, work out which way is downhill, take a small step. Here is that move, on a problem
+    small enough to see whole.</p>
+  <div class="hook">Twelve points, one straight line. You will fit it by hand, then watch a machine fit it
+    by rolling down a landscape of its own mistakes, and then see the two ways that rolling goes wrong.</div>
+
+  <!-- 1 -->
+  <section>
+    <div class="marker"><i>1</i> A GUESS AND ITS ERROR</div>
+    <h2>Fit a line by hand</h2>
+    <p>The model is a line, <span class="m">y = w·x + b</span>: a slope <i>w</i> and an intercept <i>b</i>.
+      Move them. The thin vertical strokes are the <b>errors</b>, how far each point is from the line.
+      The machine's whole notion of "wrong" is the average of their squares, the <b>mean squared error</b>.</p>
+    <div class="formula">loss(w, b) = (1/12) · Σ (w·xᵢ + b − yᵢ)²</div>
+    <div class="panel">
+      <canvas id="fitCanvas" height="300"></canvas>
+      <div class="controls">
+        <div class="ctl"><label>Slope w <b id="wOut"></b></label><input id="w" type="range" min="-1.5" max="2.5" step="0.05" value="-1"></div>
+        <div class="ctl"><label>Intercept b <b id="bOut"></b></label><input id="b" type="range" min="-1.5" max="5" step="0.05" value="4"></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="l">Your loss</div><div class="v" id="lossOut"></div></div>
+        <div class="stat"><div class="l">Best possible</div><div class="v">0.100</div></div>
+        <div class="stat"><div class="l">Best line</div><div class="v" style="font-size:18px">y = 0.80x + 1.02</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section>
+    <div class="marker"><i>2</i> THE LANDSCAPE</div>
+    <h2>Every guess is a place on a map</h2>
+    <p>Each pair (<i>w</i>, <i>b</i>) has a loss. Draw all of them and you get a terrain: across is
+      slope, up is intercept, colour is height. Your guess is the dot (click the map to move it). The
+      best line sits at the bottom of the long, narrow valley. The arrow is the <b>negative gradient</b>:
+      the direction in which the loss falls fastest, worked out from the data by calculus,</p>
+    <div class="formula">∂loss/∂w = (2/12)·Σ (w·xᵢ + b − yᵢ)·xᵢ &nbsp;&nbsp; ∂loss/∂b = (2/12)·Σ (w·xᵢ + b − yᵢ)</div>
+    <div class="panel">
+      <canvas id="mapCanvas" height="380" style="cursor:crosshair"></canvas>
+      <div class="cap">Bands are contours of equal loss; each band is about 1.65× higher than the one inside it.
+        The valley is narrow because the slope matters far more than the intercept: x runs up to 5, so a
+        change in <i>w</i> moves the line much more than the same change in <i>b</i>.</div>
+      <div class="stats">
+        <div class="stat"><div class="l">∂loss/∂w</div><div class="v" id="gwOut"></div></div>
+        <div class="stat"><div class="l">∂loss/∂b</div><div class="v" id="gbOut"></div></div>
+        <div class="stat"><div class="l">Steepness</div><div class="v" id="gnOut"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section>
+    <div class="marker"><i>3</i> ROLLING DOWNHILL</div>
+    <h2>Gradient descent</h2>
+    <p>From your guess, step against the gradient, scaled by a <b>learning rate</b> η, and repeat:</p>
+    <div class="formula">w ← w − η·∂loss/∂w &nbsp;&nbsp;&nbsp; b ← b − η·∂loss/∂b</div>
+    <p>Try η = 0.005 (it crawls), 0.05 (steady), 0.088 (it zig-zags across the valley but gets there) and
+      0.095 (each zig is bigger than the last: it flies off the map). For this data the edge is
+      η = 2/λ = 0.0923, where λ = 21.66 is the curvature across the valley; past it, descent diverges.</p>
+    <div class="panel">
+      <div class="controls" style="margin-top:0">
+        <div class="ctl"><label>Learning rate η <b id="lrOut"></b></label><input id="lr" type="range" min="0.001" max="0.1" step="0.001" value="0.05"></div>
+        <div class="btns">
+          <button id="step" class="primary">Step</button>
+          <button id="run10">Run 10 steps</button>
+          <button id="play">Run</button>
+          <button id="reset">Reset</button>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:14px">
+        <div><canvas id="map2Canvas" height="330"></canvas><div class="cap">The trail from your guess (section 1) after each step.</div></div>
+        <div>
+          <canvas id="lossCanvas" height="160"></canvas><div class="cap">Loss after each step (log scale; dashed: the best possible, 0.100).</div>
+          <canvas id="fit2Canvas" height="150" style="margin-top:10px"></canvas><div class="cap">The current line on the data.</div>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="l">Steps</div><div class="v" id="nOut">0</div></div>
+        <div class="stat"><div class="l">Loss</div><div class="v" id="l2Out"></div></div>
+        <div class="stat"><div class="l">w, b</div><div class="v" id="wbOut" style="font-size:19px"></div></div>
+      </div>
+      <span class="pill" id="verdict"></span>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section>
+    <div class="marker"><i>4</i> BUMPS</div>
+    <h2>Stuck in a dip, and how momentum helps</h2>
+    <p>The line-fitting loss is a perfect bowl, with one bottom. Real models have landscapes full of bumps.
+      Here is a one-dimensional one, <span class="m">f(x) = 0.08x² + 0.55·sin(2.2x)</span>. Plain descent
+      stops in the first dip it reaches: a <b>local minimum</b>. <b>Momentum</b> lets the ball keep a share
+      β of its previous velocity, so it can roll through a small dip and over the next rise:</p>
+    <div class="formula">v ← β·v − η·f′(x) &nbsp;&nbsp;&nbsp; x ← x + v</div>
+    <div class="panel">
+      <canvas id="bumpCanvas" height="300"></canvas>
+      <div class="controls">
+        <div class="ctl"><label>Start x₀ <b id="x0Out"></b></label><input id="x0" type="range" min="-5" max="5" step="0.1" value="-4.5"></div>
+        <div class="ctl"><label>Learning rate η <b id="blrOut"></b></label><input id="blr" type="range" min="0.01" max="0.2" step="0.01" value="0.1"></div>
+        <div class="ctl"><label>Momentum β <b id="betaOut"></b></label><input id="beta" type="range" min="0" max="0.95" step="0.05" value="0.9"></div>
+        <div class="ctl"><label>Steps <b id="bnOut"></b></label><input id="bn" type="range" min="0" max="100" step="1" value="100"></div>
+        <button id="bplay" class="primary">Play</button>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="l">Plain descent ends at</div><div class="v" id="plainOut"></div></div>
+        <div class="stat"><div class="l">With momentum</div><div class="v" id="momOut" style="color:var(--trail)"></div></div>
+        <div class="stat"><div class="l">Lowest point</div><div class="v">x = −0.68 <small>f = −0.51</small></div></div>
+      </div>
+    </div>
+    <p>Momentum is not magic: from some starts it overshoots the best valley too, and too much of it
+      oscillates for ages. Every serious optimiser (with names like Adam) is a refinement of these two
+      dials: how big a step, and how much to remember.</p>
+  </section>
+
+  <section>
+    <div class="closing">
+      <div class="marker">WHAT YOU JUST SAW</div>
+      <ul>
+        <li>"Learning" here is choosing two numbers, <i>w</i> and <i>b</i>, to make one number, the loss, small.</li>
+        <li>The loss over all choices is a landscape; its gradient points uphill, so the machine steps the other way.</li>
+        <li>The learning rate is the stride: too small crawls, a bit large zig-zags, past 2/(steepest curvature) it diverges.</li>
+        <li>Bumpy landscapes trap plain descent in local minima; momentum carries it over small rises.</li>
+        <li>A network with a billion weights does exactly this, in a billion dimensions.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const X = [0.3, 0.8, 1.2, 1.7, 2.1, 2.6, 3.0, 3.4, 3.9, 4.3, 4.8, 5.2];
+  const Y = [1.59, 1.24, 2.16, 2.21, 3.18, 2.78, 3.5, 3.27, 4.42, 4.49, 4.59, 5.56];
+  const N = X.length;
+  const mx = X.reduce((s, x) => s + x, 0) / N, mxx = X.reduce((s, x) => s + x * x, 0) / N;
+  const my = Y.reduce((s, y) => s + y, 0) / N, mxy = X.reduce((s, x, i) => s + x * Y[i], 0) / N;
+  const myy = Y.reduce((s, y) => s + y * y, 0) / N;
+  const loss = (w, b) => w * w * mxx + 2 * w * b * mx + b * b - 2 * w * mxy - 2 * b * my + myy;
+  const grad = (w, b) => [2 * (w * mxx + b * mx - mxy), 2 * (w * mx + b - my)];
+  const LMIN = 0.10015912;
+  const W0 = -1.5, W1 = 2.5, B0 = -1.5, B1 = 5;
+  const band = L => Math.floor(Math.log(Math.max(L, LMIN) / LMIN) * 2);
+
+  const $ = id => document.getElementById(id);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  let C = {};
+  const readC = () => { C = { ink: css('--ink'), muted: css('--muted'), faint: css('--faint'), rule: css('--rule'),
+    lo: css('--land-lo').split(',').map(Number), hi: css('--land-hi').split(',').map(Number), contour: css('--contour'),
+    trail: css('--trail'), soft: css('--trail-soft'), line: css('--line'), ok: css('--ok'), warn: css('--warn'), bad: css('--bad'), card: css('--card') }; };
+  readC();
+
+  function setup(cv) {
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = +cv.getAttribute('height');
+    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + 'px'; }
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h); return [g, w, h];
+  }
+  const font = (g, px, bold) => g.font = `${bold ? '600 ' : ''}${px}px ui-monospace, Menlo, Consolas, monospace`;
+  const arrow = (g, x1, y1, x2, y2, col, wd = 2.5) => {
+    g.strokeStyle = col; g.fillStyle = col; g.lineWidth = wd; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+    const a = Math.atan2(y2 - y1, x2 - x1); g.beginPath(); g.moveTo(x2, y2);
+    g.lineTo(x2 - 10 * Math.cos(a - 0.4), y2 - 10 * Math.sin(a - 0.4)); g.lineTo(x2 - 10 * Math.cos(a + 0.4), y2 - 10 * Math.sin(a + 0.4)); g.fill();
+  };
+
+  // state
+  let w = -1, b = 4, lr = 0.05, n = 0, playing = false;
+
+  // ---------- data plot
+  function drawFit(id, ww, bb, resid) {
+    const [g, W, H] = setup($(id));
+    const L = 36, R = W - 14, T = 12, B = H - 26;
+    const px = x => L + (R - L) * x / 5.6, py = y => B - (B - T) * (y + 0.5) / 7;
+    font(g, 11); g.strokeStyle = C.rule; g.lineWidth = 1;
+    for (let yv = 0; yv <= 6; yv += 2) { g.beginPath(); g.moveTo(L, py(yv)); g.lineTo(R, py(yv)); g.stroke(); g.fillStyle = C.muted; g.textAlign = 'right'; g.fillText(yv, L - 6, py(yv) + 4); }
+    g.textAlign = 'center'; for (let xv = 0; xv <= 5; xv++) g.fillText(xv, px(xv), B + 16);
+    g.save(); g.beginPath(); g.rect(L, T, R - L, B - T); g.clip();
+    if (resid) for (let i = 0; i < N; i++) { g.strokeStyle = C.trail; g.globalAlpha = .6; g.lineWidth = 1.5; g.beginPath(); g.moveTo(px(X[i]), py(Y[i])); g.lineTo(px(X[i]), py(ww * X[i] + bb)); g.stroke(); }
+    g.globalAlpha = 1;
+    g.strokeStyle = C.line; g.lineWidth = 2.5; g.beginPath(); g.moveTo(px(0), py(bb)); g.lineTo(px(5.6), py(ww * 5.6 + bb)); g.stroke();
+    g.restore();
+    for (let i = 0; i < N; i++) { g.fillStyle = C.ink; g.beginPath(); g.arc(px(X[i]), py(Y[i]), 4, 0, 7); g.fill(); }
+  }
+
+  // ---------- terrain (cached image per size)
+  const terrainCache = {};
+  function terrain(W, H) {
+    const key = W + 'x' + H + C.lo + C.hi;
+    if (terrainCache[key]) return terrainCache[key];
+    const dpr = window.devicePixelRatio || 1, cw = Math.round(W * dpr), ch = Math.round(H * dpr);
+    const off = document.createElement('canvas'); off.width = cw; off.height = ch;
+    const g = off.getContext('2d'), img = g.createImageData(cw, ch);
+    const bands = [];
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+      const ww = W0 + (W1 - W0) * i / cw, bb = B1 - (B1 - B0) * j / ch;
+      bands.push(band(loss(ww, bb)));
+    }
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+      const k = bands[j * cw + i], t = Math.min(1, k / 14);
+      const edge = (i > 0 && bands[j * cw + i - 1] !== k) || (j > 0 && bands[(j - 1) * cw + i] !== k);
+      const o = (j * cw + i) * 4;
+      for (let c = 0; c < 3; c++) img.data[o + c] = C.lo[c] + (C.hi[c] - C.lo[c]) * t - (edge ? 28 : 0) + (k % 2 ? 6 : 0);
+      img.data[o + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    return terrainCache[key] = off;
+  }
+  function mapper(W, H) { return { mx: ww => W * (ww - W0) / (W1 - W0), my: bb => H * (B1 - bb) / (B1 - B0) }; }
+  function drawAxes(g, W, H, M) {
+    font(g, 11); g.fillStyle = C.ink; g.globalAlpha = .75;
+    for (const wv of [-1, 0, 1, 2]) { g.textAlign = 'center'; g.fillText(`w=${wv}`, M.mx(wv), H - 6); }
+    for (const bv of [0, 2, 4]) { g.textAlign = 'left'; g.fillText(`b=${bv}`, 6, M.my(bv) + 4); }
+    g.globalAlpha = 1;
+    // the bottom of the valley
+    g.strokeStyle = C.ink; g.lineWidth = 1.5; const ox = M.mx(0.8037), oy = M.my(1.0189);
+    g.beginPath(); g.moveTo(ox - 6, oy - 6); g.lineTo(ox + 6, oy + 6); g.moveTo(ox + 6, oy - 6); g.lineTo(ox - 6, oy + 6); g.stroke();
+  }
+  function drawMap() {
+    const cv = $('mapCanvas'); const [g, W, H] = setup(cv);
+    g.drawImage(terrain(W, H), 0, 0, W, H);
+    const M = mapper(W, H); drawAxes(g, W, H, M);
+    const [gw, gb] = grad(w, b), gn = Math.hypot(gw, gb);
+    const x = M.mx(w), y = M.my(b);
+    // direction in screen space of -gradient (unit), fixed length
+    const dx = -gw * W / (W1 - W0), dy = gb * H / (B1 - B0); const dl = Math.hypot(dx, dy) || 1;
+    arrow(g, x, y, x + 60 * dx / dl, y + 60 * dy / dl, C.trail);
+    g.fillStyle = C.card; g.beginPath(); g.arc(x, y, 8, 0, 7); g.fill();
+    g.fillStyle = C.trail; g.beginPath(); g.arc(x, y, 5.5, 0, 7); g.fill();
+    $('gwOut').textContent = gw.toFixed(2); $('gbOut').textContent = gb.toFixed(2); $('gnOut').textContent = gn.toFixed(2);
+  }
+  $('mapCanvas').addEventListener('click', e => {
+    const r = e.target.getBoundingClientRect();
+    const ww = W0 + (W1 - W0) * (e.clientX - r.left) / r.width, bb = B1 - (B1 - B0) * (e.clientY - r.top) / r.height;
+    setGuess(Math.round(ww * 20) / 20, Math.round(bb * 20) / 20);
+  });
+
+  // ---------- descent
+  function trajectory() {
+    const pts = [[w, b]]; let cw = w, cb = b;
+    for (let i = 0; i < n; i++) {
+      const [gw, gb] = grad(cw, cb); cw -= lr * gw; cb -= lr * gb; pts.push([cw, cb]);
+    }
+    return pts;
+  }
+  function drawDescent() {
+    const pts = trajectory(), last = pts[pts.length - 1], Lnow = loss(last[0], last[1]);
+    // map
+    const [g, W, H] = setup($('map2Canvas'));
+    g.drawImage(terrain(W, H), 0, 0, W, H);
+    const M = mapper(W, H); drawAxes(g, W, H, M);
+    g.strokeStyle = C.trail; g.lineWidth = 2; g.beginPath();
+    pts.forEach(([ww, bb], i) => { const x = M.mx(ww), y = M.my(bb); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
+    pts.forEach(([ww, bb], i) => { const end = i === pts.length - 1; g.fillStyle = end ? C.card : C.trail; g.beginPath(); g.arc(M.mx(ww), M.my(bb), end ? 8 : 2.2, 0, 7); g.fill(); if (end) { g.fillStyle = C.trail; g.beginPath(); g.arc(M.mx(ww), M.my(bb), 5.5, 0, 7); g.fill(); } });
+    // loss curve
+    {
+      const [g, W, H] = setup($('lossCanvas'));
+      const L = 40, R = W - 10, T = 10, B = H - 22, span = Math.max(20, n);
+      const lx = i => L + (R - L) * i / span, ly = v => B - (B - T) * (Math.log10(Math.max(v, 0.08)) + 1.1) / 3.1;
+      font(g, 11); g.strokeStyle = C.rule; g.lineWidth = 1;
+      for (const v of [0.1, 1, 10, 100]) { g.beginPath(); g.moveTo(L, ly(v)); g.lineTo(R, ly(v)); g.stroke(); g.fillStyle = C.muted; g.textAlign = 'right'; g.fillText(v, L - 6, ly(v) + 4); }
+      g.textAlign = 'center'; g.fillText('0', lx(0), B + 16); g.fillText(`${span} steps`, lx(span) - 30, B + 16);
+      g.setLineDash([4, 4]); g.strokeStyle = C.ok; g.beginPath(); g.moveTo(L, ly(LMIN)); g.lineTo(R, ly(LMIN)); g.stroke(); g.setLineDash([]);
+      g.save(); g.beginPath(); g.rect(L, 0, R - L, H); g.clip();
+      g.strokeStyle = C.trail; g.lineWidth = 2; g.beginPath();
+      pts.forEach(([ww, bb], i) => { const x = lx(i), y = ly(Math.min(loss(ww, bb), 1e3)); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
+      g.restore();
+    }
+    drawFit('fit2Canvas', last[0], last[1], false);
+    $('nOut').textContent = n;
+    $('l2Out').textContent = Lnow > 1e6 ? Lnow.toExponential(1) : Lnow.toFixed(Lnow < 10 ? 3 : 1);
+    $('wbOut').textContent = Math.abs(last[0]) > 1e4 ? 'off the map' : `${last[0].toFixed(2)}, ${last[1].toFixed(2)}`;
+    const v = $('verdict');
+    let cls, msg;
+    if (n === 0) { cls = 'warn'; msg = 'Press Step: one step against the gradient.'; }
+    else if (lr > 0.0923) { cls = 'bad'; msg = 'Diverging: each step overshoots the valley by more than the last.'; }
+    else if (Lnow < 0.101) { cls = 'ok'; msg = `Converged: within 1% of the best fit after ${n} steps.`; }
+    else if (lr < 0.01) { cls = 'warn'; msg = 'Crawling: the steps are tiny, so progress is slow.'; }
+    else if (lr > 0.08) { cls = 'warn'; msg = 'Zig-zagging across the steep walls of the valley, but heading down.'; }
+    else { cls = 'ok'; msg = 'Rolling down the valley.'; }
+    v.className = 'pill ' + cls; v.textContent = msg;
+  }
+  $('lr').addEventListener('input', e => { lr = +e.target.value; $('lrOut').textContent = lr.toFixed(3); drawDescent(); });
+  $('step').addEventListener('click', () => { n = Math.min(200, n + 1); drawDescent(); });
+  $('run10').addEventListener('click', () => { n = Math.min(200, n + 10); drawDescent(); });
+  $('reset').addEventListener('click', () => { n = 0; playing = false; $('play').textContent = 'Run'; drawDescent(); });
+  let lastT = 0;
+  function tick(ts) {
+    if (!playing) return;
+    if (ts - lastT > 70) { lastT = ts; n = Math.min(200, n + 1); drawDescent(); if (n >= 200) { playing = false; $('play').textContent = 'Run'; } }
+    if (playing) requestAnimationFrame(tick);
+  }
+  $('play').addEventListener('click', () => { playing = !playing; $('play').textContent = playing ? 'Pause' : 'Run'; if (playing) requestAnimationFrame(tick); });
+
+  function setGuess(ww, bb) {
+    w = Math.max(W0, Math.min(W1, ww)); b = Math.max(B0, Math.min(B1, bb));
+    $('w').value = w; $('b').value = b; $('wOut').textContent = w.toFixed(2); $('bOut').textContent = b.toFixed(2);
+    $('lossOut').textContent = loss(w, b).toFixed(3);
+    drawFit('fitCanvas', w, b, true); drawMap(); drawDescent();
+  }
+  $('w').addEventListener('input', e => setGuess(+e.target.value, b));
+  $('b').addEventListener('input', e => setGuess(w, +e.target.value));
+
+  // ---------- bumps
+  const f = x => 0.08 * x * x + 0.55 * Math.sin(2.2 * x);
+  const df = x => 0.16 * x + 1.21 * Math.cos(2.2 * x);
+  function roll(x0, eta, beta, steps) {
+    const xs = [x0]; let x = x0, v = 0;
+    for (let i = 0; i < steps; i++) { v = beta * v - eta * df(x); x += v; xs.push(x); }
+    return xs;
+  }
+  function drawBumps() {
+    const x0 = +$('x0').value, eta = +$('blr').value, beta = +$('beta').value, steps = +$('bn').value;
+    $('x0Out').textContent = x0.toFixed(1); $('blrOut').textContent = eta.toFixed(2); $('betaOut').textContent = beta.toFixed(2); $('bnOut').textContent = steps;
+    const plain = roll(x0, eta, 0, steps), mom = roll(x0, eta, beta, steps);
+    const [g, W, H] = setup($('bumpCanvas'));
+    const L = 20, R = W - 20, T = 20, B = H - 30;
+    const px = x => L + (R - L) * (x + 5) / 10, py = y => B - (B - T) * (y + 0.8) / 3.6;
+    g.fillStyle = C.soft; g.beginPath(); g.moveTo(px(-5), B);
+    for (let i = 0; i <= 300; i++) { const x = -5 + 10 * i / 300; g.lineTo(px(x), py(f(x))); }
+    g.lineTo(px(5), B); g.fill();
+    g.strokeStyle = C.ink; g.lineWidth = 2; g.beginPath();
+    for (let i = 0; i <= 300; i++) { const x = -5 + 10 * i / 300; i ? g.lineTo(px(x), py(f(x))) : g.moveTo(px(x), py(f(x))); }
+    g.stroke();
+    font(g, 11); g.fillStyle = C.muted; g.textAlign = 'center';
+    for (const xv of [-4, -2, 0, 2, 4]) g.fillText(xv, px(xv), B + 18);
+    const ball = (xs, col, r, label) => {
+      g.save(); g.beginPath(); g.rect(0, 0, W, H); g.clip();
+      xs.forEach((x, i) => { g.fillStyle = col; g.globalAlpha = 0.25; g.beginPath(); g.arc(px(x), py(f(x)), 2.5, 0, 7); g.fill(); });
+      g.globalAlpha = 1; const x = xs[xs.length - 1];
+      g.fillStyle = col; g.beginPath(); g.arc(px(x), py(f(x)) - r, r, 0, 7); g.fill();
+      font(g, 12, true); g.fillText(label, px(x), py(f(x)) - 2 * r - 8);
+      g.restore();
+    };
+    ball(plain, C.line, 8, 'plain');
+    ball(mom, C.trail, 10, 'momentum');
+    const show = x => `x = ${x.toFixed(2)} <small>f = ${f(x).toFixed(2)}</small>`;
+    $('plainOut').innerHTML = show(plain[plain.length - 1]); $('momOut').innerHTML = show(mom[mom.length - 1]);
+  }
+  for (const id of ['x0', 'blr', 'beta', 'bn']) $(id).addEventListener('input', drawBumps);
+  let bplaying = false, blast = 0;
+  function btick(ts) {
+    if (!bplaying) return;
+    if (ts - blast > 60) { blast = ts; const s = $('bn'); s.value = Math.min(100, +s.value + 1); drawBumps(); if (+s.value >= 100) { bplaying = false; $('bplay').textContent = 'Play'; } }
+    if (bplaying) requestAnimationFrame(btick);
+  }
+  $('bplay').addEventListener('click', () => {
+    bplaying = !bplaying; $('bplay').textContent = bplaying ? 'Pause' : 'Play';
+    if (bplaying) { if (+$('bn').value >= 100) $('bn').value = 0; requestAnimationFrame(btick); }
+  });
+
+  const all = () => { readC(); setGuess(w, b); drawBumps(); };
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', all);
+  window.addEventListener('resize', all);
+  $('lrOut').textContent = lr.toFixed(3);
+  n = 30;
+  all();
+})();
+</script>
+</body>
+</html>

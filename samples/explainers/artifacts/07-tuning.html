@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why every piano is slightly out of tune</title>
+<style>
+  :root {
+    --bg: #f6f0e4; --paper: #fffaf0; --ink: #221a12; --muted: #7a6a58; --faint: #e3d7c3; --line: #e8dcc8;
+    --lo: #b06a12; --hi: #1f7a78; --beat: #c23b2a; --ok: #3d8a3a; --accent: #8c4a1c;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17120e; --paper: #211a14; --ink: #f1e6d4; --muted: #ab9a84; --faint: #3a3027; --line: #33291f;
+      --lo: #f0a64a; --hi: #52c4c0; --beat: #ff7a64; --ok: #8bd27a; --accent: #f0a64a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 18px/1.62 "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 24px 80px; }
+  .sans, button, label, table, .kicker, .readout, .small, h3 { font-family: "Gill Sans", "Gill Sans MT", "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; }
+  header { padding: 70px 0 30px; text-align: center; }
+  .kicker { text-transform: uppercase; letter-spacing: .24em; font-size: 12px; color: var(--accent); }
+  h1 { font-size: clamp(38px, 6vw, 64px); line-height: 1.04; margin: 14px auto 18px; font-weight: 400; max-width: 800px; font-style: italic; }
+  h2 { font-size: 32px; font-weight: 400; margin: 0 0 8px; font-style: italic; }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  .lede { font-size: 21px; max-width: 700px; margin: 0 auto; }
+  .staff { height: 34px; margin: 28px auto 0; max-width: 520px;
+    background: repeating-linear-gradient(to bottom, var(--faint) 0 1px, transparent 1px 8px); }
+  section { padding: 46px 0 20px; border-top: 1px solid var(--line); }
+  section > p { max-width: 720px; }
+  .num { font-family: "Gill Sans", "Avenir Next", Helvetica, Arial, sans-serif; font-variant-numeric: tabular-nums; }
+  .panel { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; margin: 18px 0; }
+  .controls { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; margin-bottom: 12px; }
+  .controls label { display: flex; gap: 10px; align-items: center; font-size: 14px; }
+  input[type=range] { accent-color: var(--accent); width: 220px; }
+  button { font-size: 14px; border: 1px solid var(--accent); color: var(--accent); background: transparent; border-radius: 999px; padding: 5px 14px; cursor: pointer; }
+  button:hover, button.on { background: var(--accent); color: var(--paper); }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .mode { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px 6px; cursor: pointer; background: var(--bg); }
+  .mode:hover { border-color: var(--accent); }
+  .mode .top { display: flex; justify-content: space-between; font-size: 13px; }
+  .mode canvas { width: 100%; height: 56px; display: block; }
+  canvas { display: block; width: 100%; }
+  .readout { font-size: 15px; margin-top: 8px; }
+  .readout b { color: var(--accent); }
+  .big { font-size: 44px; line-height: 1; color: var(--accent); }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+  .stat { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .stat .l { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+  .stat .v { font-size: 26px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; border-bottom: 1px solid var(--line); padding: 6px; }
+  td { padding: 6px; border-bottom: 1px solid var(--line); }
+  tr.pick { cursor: pointer; }
+  tr.pick:hover td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  tr.sel td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .dev { position: relative; height: 12px; width: 140px; background: color-mix(in srgb, var(--faint) 60%, transparent); border-radius: 6px; }
+  .dev i { position: absolute; top: 0; bottom: 0; border-radius: 6px; }
+  .dev::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; border-left: 1px solid var(--ink); opacity: .5; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .small { font-size: 13px; color: var(--muted); }
+  .formula { font-size: 22px; text-align: center; margin: 14px 0; }
+  .lo { color: var(--lo); } .hi { color: var(--hi); } .bt { color: var(--beat); }
+  footer { padding: 30px 0; }
+  @media (max-width: 720px) { .modes, .two, .stats { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">Harmonics &amp; temperament</div>
+  <h1>Why every piano is slightly out of tune</h1>
+  <p class="lede">A freshly tuned piano is out of tune on purpose. Every interval on it except the octave is a
+  little wrong, by an amount a tuner can count in beats per second. It is not a flaw of the instrument; it is
+  arithmetic. Twelve keys cannot hold the ratios that make music sound sweet, and the story of why starts with a
+  single vibrating string.</p>
+  <div class="controls" style="justify-content:center;margin-top:22px">
+    <button id="hookPure">Play a pure major third</button><button id="hookPiano">Play a piano's major third</button>
+  </div>
+  <p class="small" style="text-align:center">Listen for the slow shimmer in the second one. That is the subject of this page.</p>
+  <div class="staff"></div>
+</header>
+
+<section>
+  <div class="kicker">1 · The harmonic series</div>
+  <h2>A string sings many notes at once</h2>
+  <p>A string fixed at both ends can only vibrate in shapes that fit a whole number of half-waves between the ends.
+  Mode <i>n</i> has <i>n</i> half-waves and vibrates <i>n</i> times as fast as the first: if the whole string sounds
+  at <i>f</i>, the modes sound at <i>f</i>, 2<i>f</i>, 3<i>f</i>, 4<i>f</i>… This ladder is the <b>harmonic
+  series</b>, and every pitched instrument sounds several rungs of it at once. Click a mode to hear it.</p>
+  <div class="panel">
+    <div class="controls">
+      <label>Fundamental <input type="range" id="f0" min="55" max="220" step="1" value="110"> <span class="num" id="f0v"></span></label>
+      <button id="pause">Pause</button>
+    </div>
+    <div class="modes" id="modes"></div>
+    <p class="small">Each harmonic's nearest piano key, and how far off it is in <b>cents</b> (hundredths of a piano semitone).
+    Harmonics 3 and 5 are the seeds of the fifth and the major third; notice the keyboard already misses them.</p>
+  </div>
+  <p>A real pluck excites many modes at once. Where you pluck decides how much of each: pluck at the middle and every
+  even mode, which has a still point (a node) there, stays silent. The shape below is the sum of the first eight modes.</p>
+  <div class="panel">
+    <div class="controls">
+      <label>Pluck at <input type="range" id="pluck" min="0.05" max="0.5" step="0.01" value="0.2"> <span class="num" id="pluckv"></span></label>
+      <button id="pluckPlay">Pluck it</button>
+    </div>
+    <div class="two">
+      <div><h3>The string</h3><canvas id="pluckString" height="150"></canvas></div>
+      <div><h3>How loud each harmonic is</h3><canvas id="pluckBars" height="150"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">2 · Consonance</div>
+  <h2>Two notes agree when their harmonics do</h2>
+  <p>Add two waves of slightly different frequency and they drift in and out of step: in step they reinforce, out
+  of step they cancel. The loudness swells and fades at the <b>difference</b> of the two frequencies. That is the
+  identity sin <i>a</i> + sin <i>b</i> = 2 cos((<i>a</i>−<i>b</i>)/2) · sin((<i>a</i>+<i>b</i>)/2): a tone at the
+  average pitch, inside an envelope that beats |<i>f</i><sub>1</sub> − <i>f</i><sub>2</sub>| times a second.</p>
+  <div class="panel">
+    <div class="controls">
+      <label>Second wave is <input type="range" id="dHz" min="0" max="10" step="0.1" value="3"> <span class="num" id="dHzv"></span> higher</label>
+      <button id="beatPlay">Play 440 Hz and 440 + Δ</button>
+    </div>
+    <canvas id="beatCanvas" height="220"></canvas>
+    <p class="small">Drawn slowed down (an 8 Hz wave instead of 440 Hz) so the cycles are visible; the beat rate is the real one, over two seconds.</p>
+  </div>
+  <p>Now two real notes, each with its ladder of harmonics. When their frequency ratio is a simple fraction like
+  3:2, harmonics of the two notes land exactly on top of each other (the 3rd of the lower on the 2nd of the upper)
+  and nothing beats. Nudge the ratio off and those coinciding harmonics separate by a few hertz and begin to beat:
+  the interval turns sour. Beats around 20–30 a second sound roughest. The curve below adds up that roughness for
+  every pair of harmonics (a model of listening experiments by Plomp, Levelt and Sethares); its valleys are the
+  simple ratios.</p>
+  <div class="panel">
+    <div class="controls">
+      <label>Interval <input type="range" id="cents" min="0" max="1200" step="1" value="702" style="width:300px"> <span class="num" id="centsv"></span></label>
+      <button id="ivPlay">Play both</button>
+    </div>
+    <div class="controls" id="snaps"></div>
+    <h3>Harmonics of the <span class="lo">lower note (220 Hz)</span> and the <span class="hi">upper note</span></h3>
+    <canvas id="ladder" height="170"></canvas>
+    <div class="readout" id="ladderText"></div>
+    <h3 style="margin-top:16px">Roughness across the octave</h3>
+    <canvas id="diss" height="200"></canvas>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">3 · The Pythagorean comma</div>
+  <h2>The circle of fifths does not close</h2>
+  <p>Tune by pure fifths, the sweetest interval after the octave: start on C, go up a 3:2 fifth to G, another to D,
+  and so on. Fold each note back into one octave. After twelve fifths you have visited every key and should be back on
+  C. You are not. Twelve pure fifths are (3/2)<sup>12</sup> ≈ 129.75; seven octaves are 2<sup>7</sup> = 128. The
+  overshoot, 531441 : 524288, is the <b>Pythagorean comma</b>: about 23.5 cents, a quarter of a semitone. No powers
+  of 3 will ever equal a power of 2, so the circle can never close.</p>
+  <div class="panel">
+    <div class="controls">
+      <label>Fifths stacked <input type="range" id="k" min="0" max="12" step="1" value="12"> <span class="num" id="kv"></span></label>
+      <label><input type="checkbox" id="tempered"> Narrow each fifth to 700 cents (equal temperament)</label>
+      <button id="stack">Stack them</button>
+    </div>
+    <div class="two">
+      <svg id="spiral" viewBox="0 0 400 400" width="100%"></svg>
+      <div>
+        <table id="fifths"></table>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="l" id="stAl">Stacked</div><div class="v num" id="stA"></div></div>
+      <div class="stat"><div class="l">Seven octaves</div><div class="v num">2<sup>7</sup> = 128</div></div>
+      <div class="stat"><div class="l">Gap at the top</div><div class="v num" id="stC"></div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">4 · Equal temperament</div>
+  <h2>Share the error, twelve ways</h2>
+  <p>The modern solution is to give up on every pure interval except the octave. Divide the octave into twelve equal
+  steps, each a ratio of</p>
+  <p class="formula num">2<sup>1/12</sup> = 1.059463…</p>
+  <p>so that twelve of them make exactly 2. Each tempered fifth is 700 cents instead of 701.96, two cents narrow;
+  twelve of them absorb the comma and the circle closes. Every key now sounds the same, and you can modulate anywhere.
+  The price is that no interval but the octave is pure. Cents are the ruler: an interval of ratio <i>r</i> is
+  1200·log<sub>2</sub> <i>r</i> cents, a tempered semitone is exactly 100. Click a row to see, and hear, what the
+  difference does.</p>
+  <div class="panel">
+    <div class="controls">
+      <label>Lower note <input type="range" id="root" min="48" max="72" step="1" value="60"> <span class="num" id="rootv"></span></label>
+    </div>
+    <table id="et"></table>
+    <div class="small" style="margin-top:6px">Beats: the coinciding harmonics of a just interval <i>p</i>:<i>q</i> (the <i>p</i>-th
+    of the lower, the <i>q</i>-th of the upper) pulled apart by temperament. Shown only when <i>p</i> ≤ 10; higher harmonics are too faint to count.</div>
+  </div>
+  <div class="panel">
+    <div class="controls"><button id="playJust">Play just</button><button id="playET">Play equal-tempered</button><span class="readout" id="etPick"></span></div>
+    <div class="two">
+      <div><h3>Just: the shared harmonic holds</h3><canvas id="envJust" height="140"></canvas></div>
+      <div><h3 id="envETt">Equal-tempered</h3><canvas id="envET" height="140"></canvas></div>
+    </div>
+    <p class="small">The loudness of the shared harmonic over one second. Pure, it is steady; tempered, it swells and fades at the beat rate.</p>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">What you just saw</div>
+  <h2>A compromise you can hear</h2>
+  <p>A string sounds a whole ladder of harmonics. Two notes sound sweet when their ladders share rungs, which happens
+  at simple ratios like 2:1, 3:2 and 5:4. But those ratios are built from powers of 2, 3 and 5, and no stack of them
+  ever lands back on a pure octave: twelve fifths overshoot seven octaves by the Pythagorean comma. Equal temperament
+  spreads that error evenly. Fifths and fourths come out two cents off, almost pure; major thirds are nearly
+  fourteen cents sharp, and on a piano you can hear them shimmer about ten times a second around middle C.</p>
+  <p>Real pianos add one more twist: their stiff steel strings have harmonics that run slightly sharp of the ideal
+  ladder, so tuners stretch the octaves a little wider than 2:1 to keep them beat-free. Even the octave, the one
+  interval the system promised to keep, is bent. Every piano is slightly out of tune, and that is how it is in tune.</p>
+</section>
+<footer class="small">One self-contained page. Sound is generated in your browser with the Web Audio API.</footer>
+</div>
+
+<script>
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+const cents = r => 1200 * Math.log2(r);
+function nearestKey(f) {
+  const m = 69 + 12 * Math.log2(f / 440), k = Math.round(m);
+  return { name: NAMES[((k % 12) + 12) % 12] + (Math.floor(k / 12) - 1), off: 100 * (m - k) };
+}
+const sgn2 = x => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(2);
+const sgn = x => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
+function fit(c) {
+  const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = +c.getAttribute('height');
+  if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.height = h + 'px'; }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  return [g, w, h];
+}
+
+// ---------- audio ----------
+let ac = null;
+function audio() { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); return ac; }
+function tone(freq, dur = 2, amps = [1], gain = 0.18, when = 0) {
+  const a = audio(), t0 = a.currentTime + when;
+  const real = new Float32Array(amps.length + 1), imag = new Float32Array(amps.length + 1);
+  amps.forEach((v, i) => imag[i + 1] = v);
+  const o = a.createOscillator(); o.setPeriodicWave(a.createPeriodicWave(real, imag, { disableNormalization: false })); o.frequency.value = freq;
+  const g = a.createGain(); g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.03);
+  g.gain.setValueAtTime(gain, t0 + dur - 0.3); g.gain.linearRampToValueAtTime(0, t0 + dur);
+  o.connect(g).connect(a.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+}
+const RICH = [1, .5, .33, .25, .2, .16];
+$('hookPure').onclick = () => { tone(261.63, 3.5, RICH); tone(261.63 * 5 / 4, 3.5, RICH); };
+$('hookPiano').onclick = () => { tone(261.63, 3.5, RICH); tone(261.63 * Math.pow(2, 4 / 12), 3.5, RICH); };
+
+// ---------- 1. modes ----------
+let paused = false, t = 0, last = performance.now();
+$('pause').onclick = e => { paused = !paused; e.target.textContent = paused ? 'Play' : 'Pause'; };
+$('modes').innerHTML = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `
+  <div class="mode" data-n="${n}"><div class="top sans"><span><b>Mode ${n}</b> · <span id="mf${n}" class="num"></span></span><span id="mk${n}" class="num"></span></div>
+  <canvas id="mc${n}" height="56"></canvas></div>`).join('');
+document.querySelectorAll('.mode').forEach(el => el.onclick = () => tone(+$('f0').value * +el.dataset.n, 1.6, [1], 0.2));
+function modeText() {
+  const f0 = +$('f0').value;
+  $('f0v').textContent = f0 + ' Hz (' + nearestKey(f0).name + ')';
+  for (let n = 1; n <= 8; n++) {
+    const f = f0 * n, k = nearestKey(f);
+    $('mf' + n).textContent = f.toFixed(0) + ' Hz';
+    $('mk' + n).innerHTML = `${k.name} <span style="color:${Math.abs(k.off) > 5 ? css('--beat') : css('--muted')}">${sgn(k.off)}¢</span>`;
+  }
+}
+$('f0').oninput = modeText;
+function drawModes() {
+  const lo = css('--lo'), faint = css('--faint');
+  for (let n = 1; n <= 8; n++) {
+    const [g, w, h] = fit($('mc' + n)), mid = h / 2, A = h * 0.4, ph = Math.cos(2 * Math.PI * n * 0.5 * t);
+    g.strokeStyle = faint; g.setLineDash([3, 3]); g.lineWidth = 1;
+    for (const s of [1, -1]) { g.beginPath(); for (let i = 0; i <= 120; i++) { const x = i / 120; g.lineTo(x * w, mid - s * A * Math.sin(n * Math.PI * x)); } g.stroke(); }
+    g.setLineDash([]); g.strokeStyle = lo; g.lineWidth = 2.2; g.beginPath();
+    for (let i = 0; i <= 160; i++) { const x = i / 160; g.lineTo(x * w, mid - A * ph * Math.sin(n * Math.PI * x)); }
+    g.stroke();
+    g.fillStyle = css('--ink');
+    for (let j = 0; j <= n; j++) { g.beginPath(); g.arc(Math.min(w - 3, Math.max(3, j / n * w)), mid, 3, 0, 7); g.fill(); }
+  }
+}
+// pluck: b_n = 2 / (n² π² p (1−p)) · sin(nπp), for a string pulled to height 1 at p
+const pluckAmps = p => [1, 2, 3, 4, 5, 6, 7, 8].map(n => 2 / (n * n * Math.PI * Math.PI * p * (1 - p)) * Math.sin(n * Math.PI * p));
+function drawPluck() {
+  const p = +$('pluck').value, b = pluckAmps(p);
+  $('pluckv').textContent = (p * 100).toFixed(0) + '% along';
+  let [g, w, h] = fit($('pluckString'));
+  const mid = h / 2, A = h * 0.4;
+  g.strokeStyle = css('--faint'); g.setLineDash([3, 3]); g.beginPath(); g.moveTo(0, mid); g.lineTo(p * w, mid - A); g.lineTo(w, mid); g.stroke(); g.setLineDash([]);
+  g.strokeStyle = css('--lo'); g.lineWidth = 2.4; g.beginPath();
+  for (let i = 0; i <= 200; i++) {
+    const x = i / 200; let y = 0;
+    for (let n = 1; n <= 8; n++) y += b[n - 1] * Math.sin(n * Math.PI * x) * Math.cos(2 * Math.PI * n * 0.5 * t);
+    g.lineTo(x * w, mid - A * y);
+  }
+  g.stroke();
+  [g, w, h] = fit($('pluckBars'));
+  const top = Math.max(...b.map(Math.abs)), bw = w / 8;
+  b.forEach((v, i) => {
+    const bh = (h - 24) * Math.abs(v) / top;
+    g.fillStyle = Math.abs(v) / top < 0.01 ? css('--faint') : css('--lo');
+    g.fillRect(i * bw + 6, h - 18 - bh, bw - 12, Math.max(bh, 1));
+    g.fillStyle = css('--muted'); g.font = '12px sans-serif'; g.textAlign = 'center'; g.fillText(i + 1, i * bw + bw / 2, h - 4);
+  });
+}
+$('pluck').oninput = drawPluck;
+$('pluckPlay').onclick = () => { const b = pluckAmps(+$('pluck').value).map(Math.abs); const m = Math.max(...b); tone(+$('f0').value, 2.5, b.map(v => v / m), 0.25); };
+
+// ---------- 2a. beats ----------
+function drawBeats() {
+  const d = +$('dHz').value; $('dHzv').textContent = d.toFixed(1) + ' Hz';
+  const [g, w, h] = fit($('beatCanvas')), T = 2, fv = 8, rows = [h * 0.15, h * 0.36, h * 0.72], A = h * 0.08;
+  const trace = (fn, y0, amp, col, lw) => { g.strokeStyle = col; g.lineWidth = lw; g.beginPath(); for (let i = 0; i <= 900; i++) { const s = i / 900 * T; g.lineTo(i / 900 * w, y0 - amp * fn(s)); } g.stroke(); };
+  trace(s => Math.sin(2 * Math.PI * fv * s), rows[0], A, css('--lo'), 1.3);
+  trace(s => Math.sin(2 * Math.PI * (fv + d) * s), rows[1], A, css('--hi'), 1.3);
+  trace(s => Math.sin(2 * Math.PI * fv * s) + Math.sin(2 * Math.PI * (fv + d) * s), rows[2], A, css('--ink'), 1.3);
+  g.setLineDash([5, 4]);
+  for (const sgn of [1, -1]) trace(s => sgn * 2 * Math.abs(Math.cos(Math.PI * d * s)), rows[2], A, css('--beat'), 2);
+  g.setLineDash([]);
+  g.fillStyle = css('--muted'); g.font = '12px sans-serif';
+  g.fillText('wave 1', 4, rows[0] - A - 4); g.fillText('wave 2 (+' + d.toFixed(1) + ' Hz)', 4, rows[1] - A - 4);
+  g.fillText('their sum: ' + (d === 0 ? 'no beats' : d.toFixed(1) + ' beats a second, ' + (2 * d).toFixed(1) + ' in these two seconds'), 4, rows[2] - 2 * A - 6);
+}
+$('dHz').oninput = drawBeats;
+$('beatPlay').onclick = () => { const d = +$('dHz').value; tone(440, 4, [1], 0.15); tone(440 + d, 4, [1], 0.15); };
+
+// ---------- 2b. interval ----------
+const LOW = 220, NH = 8;
+const SNAPS = [['Unison', 1, 1], ['Minor 3rd', 6, 5], ['Major 3rd', 5, 4], ['Fourth', 4, 3], ['Tritone', 45, 32], ['Fifth', 3, 2], ['Major 6th', 5, 3], ['Octave', 2, 1]];
+$('snaps').innerHTML = SNAPS.map(([n, p, q]) => `<button data-c="${cents(p / q).toFixed(2)}">${n} ${p}:${q}</button>`).join('') + '<button data-c="400">Piano 3rd (400¢)</button>';
+$('snaps').querySelectorAll('button').forEach(b => b.onclick = () => { $('cents').value = Math.round(+b.dataset.c); exact = +b.dataset.c; drawInterval(); });
+let exact = null;
+$('cents').oninput = () => { exact = null; drawInterval(); };
+// Plomp–Levelt roughness of two partials, in Sethares' parametrisation
+function rough(f1, f2, a1, a2) {
+  const lo = Math.min(f1, f2), d = Math.abs(f2 - f1), s = 0.24 / (0.0207 * lo + 18.96);
+  return a1 * a2 * (Math.exp(-3.5 * s * d) - Math.exp(-5.75 * s * d));
+}
+const AMP = n => Math.pow(0.88, n - 1);
+function dissonance(c) {
+  const fu = LOW * Math.pow(2, c / 1200); let d = 0;
+  for (let i = 1; i <= 6; i++) for (let j = 1; j <= 6; j++) d += rough(LOW * i, fu * j, AMP(i), AMP(j));
+  return d;
+}
+const CURVE = Array.from({ length: 241 }, (_, i) => dissonance(i * 5)), CMAX = Math.max(...CURVE);
+function drawInterval() {
+  const c = exact ?? +$('cents').value, fu = LOW * Math.pow(2, c / 1200);
+  $('centsv').textContent = c.toFixed(c % 1 ? 2 : 0) + ' cents · upper ' + fu.toFixed(1) + ' Hz';
+  let [g, w, h] = fit($('ladder'));
+  const X = f => 8 + (w - 16) * f / 3600, yL = h * 0.36, yU = h * 0.64;
+  g.strokeStyle = css('--faint'); g.lineWidth = 1; g.beginPath(); g.moveTo(8, h / 2); g.lineTo(w - 8, h / 2); g.stroke();
+  g.fillStyle = css('--muted'); g.font = '11px sans-serif'; g.textAlign = 'center';
+  for (let f = 0; f <= 3600; f += 400) { g.textAlign = f === 0 ? 'left' : f === 3600 ? 'right' : 'center'; g.fillText(f + ' Hz', X(f), h / 2 + 4); }
+  g.textAlign = 'center';
+  const pairs = [];
+  for (let i = 1; i <= NH; i++) for (let j = 1; j <= NH; j++) {
+    const a = LOW * i, b = fu * j, d = Math.abs(a - b);
+    if (d < 40 && a <= 3600 && b <= 3600) pairs.push({ i, j, a, b, d });
+  }
+  for (const p of pairs) {
+    const col = p.d < 0.5 ? css('--ok') : css('--beat');
+    g.strokeStyle = col; g.lineWidth = p.d < 0.5 ? 3 : 2; g.globalAlpha = p.d < 0.5 ? 1 : Math.max(0.35, 1 - p.d / 40);
+    g.beginPath(); g.moveTo(X(p.a), yL); g.lineTo(X(p.b), yU); g.stroke(); g.globalAlpha = 1;
+  }
+  for (let i = 1; i <= NH; i++) {
+    const a = LOW * i, b = fu * i;
+    g.fillStyle = css('--lo'); if (a <= 3600) { g.fillRect(X(a) - 2, yL - 32 * AMP(i) - 6, 4, 32 * AMP(i) + 6); g.fillText(i, X(a), yL - 42); }
+    g.fillStyle = css('--hi'); if (b <= 3600) { g.fillRect(X(b) - 2, yU, 4, 32 * AMP(i) + 6); g.fillText(i, X(b), yU + 50); }
+  }
+  const hits = pairs.filter(p => p.d < 0.5), beats = pairs.filter(p => p.d >= 0.5).sort((x, y) => x.d - y.d);
+  $('ladderText').innerHTML = (hits.length ? `<span style="color:${css('--ok')}">●</span> ${hits.length} pair${hits.length > 1 ? 's' : ''} coincide${hits.length > 1 ? '' : 's'} exactly (` + hits.map(p => `${p.i}×low = ${p.j}×high`).join(', ') + '). ' : '') +
+    (beats.length ? `<span class="bt">●</span> Beating: ` + beats.slice(0, 4).map(p => `${p.i}×low vs ${p.j}×high, <b>${p.d.toFixed(1)}</b>/s`).join('; ') + '.' : 'Nothing beats within 40 Hz.');
+  [g, w, h] = fit($('diss'));
+  const px = cc => 30 + (w - 40) * cc / 1200, py = v => h - 24 - (h - 40) * v / CMAX;
+  g.strokeStyle = css('--faint'); g.fillStyle = css('--muted'); g.font = '11px sans-serif'; g.textAlign = 'center';
+  for (const [n, p, q] of SNAPS) { const x = px(cents(p / q)); g.beginPath(); g.moveTo(x, 10); g.lineTo(x, h - 22); g.stroke(); g.fillText(p + ':' + q, x, h - 6); }
+  g.strokeStyle = css('--accent'); g.lineWidth = 2; g.beginPath(); CURVE.forEach((v, i) => g.lineTo(px(i * 5), py(v))); g.stroke();
+  const v = dissonance(c);
+  g.fillStyle = css('--beat'); g.beginPath(); g.arc(px(c), py(v), 6, 0, 7); g.fill();
+  g.textAlign = 'left'; g.fillStyle = css('--muted'); g.fillText('rougher ↑', 4, 18);
+}
+$('ivPlay').onclick = () => { const c = exact ?? +$('cents').value; tone(LOW, 3, RICH); tone(LOW * Math.pow(2, c / 1200), 3, RICH); };
+
+// ---------- 3. comma ----------
+const FIFTH_NAMES = ['C', 'G', 'D', 'A', 'E', 'B', 'F♯', 'C♯', 'G♯', 'D♯', 'A♯', 'E♯', 'B♯'];
+function fifthRow(k) {
+  let num = Math.pow(3, k), den = Math.pow(2, k), r = num / den, oct = 0;
+  while (r >= 2) { r /= 2; den *= 2; oct++; }
+  return { k, name: FIFTH_NAMES[k], num, den, r, c: cents(r), et: (k * 700) % 1200, oct };
+}
+function drawComma() {
+  const K = +$('k').value, temp = $('tempered').checked;
+  $('kv').textContent = K;
+  const step = temp ? 700 : cents(1.5), cx = 200, cy = 200;
+  let s = '';
+  for (let i = 0; i < 12; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 6;
+    s += `<line x1="${cx + 150 * Math.cos(a)}" y1="${cy + 150 * Math.sin(a)}" x2="${cx + 172 * Math.cos(a)}" y2="${cy + 172 * Math.sin(a)}" stroke="${css('--faint')}" stroke-width="2"/>`;
+    s += `<text x="${cx + 186 * Math.cos(a)}" y="${cy + 186 * Math.sin(a) + 4}" text-anchor="middle" font-size="12" fill="${css('--muted')}" font-family="sans-serif">${NAMES[i]}</text>`;
+  }
+  const pt = j => { const ang = -Math.PI / 2 + 2 * Math.PI * ((j * step) % 1200) / 1200, r = temp ? 120 : 76 + j * 6; return [cx + r * Math.cos(ang), cy + r * Math.sin(ang)]; };
+  // the gap between C and the 12th fifth, drawn as a short red arc at the top
+  if (K === 12 && !temp) {
+    const [x0, y0] = pt(0), [x1, y1] = pt(12);
+    s += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${css('--beat')}" stroke-width="2" stroke-dasharray="4 3"/>`;
+  }
+  for (let j = 0; j <= K; j++) {
+    const [x, y] = pt(j);
+    const isEnd = j === 12;
+    s += `<circle cx="${x}" cy="${y}" r="${isEnd ? 7 : 5}" fill="${isEnd ? css('--beat') : j === 0 ? css('--ink') : css('--lo')}"/>`;
+    const [lx, ly] = [cx + (x - cx) * 0.86, cy + (y - cy) * 0.86];
+    s += `<text x="${lx}" y="${ly + 4}" text-anchor="middle" font-size="10" font-family="sans-serif" fill="${css('--muted')}">${j}</text>`;
+  }
+  if (K === 12) {
+    const [x0, y0] = pt(0), [x1, y1] = pt(12);
+    s += temp ? `<text x="${cx}" y="${cy + 5}" text-anchor="middle" font-size="14" font-family="sans-serif" fill="${css('--ok')}">closed: B♯ = C</text>`
+      : `<text x="${cx}" y="${cy - 3}" text-anchor="middle" font-size="13" font-family="sans-serif" fill="${css('--beat')}">B♯ misses C</text><text x="${cx}" y="${cy + 14}" text-anchor="middle" font-size="13" font-family="sans-serif" fill="${css('--beat')}">by 23.46¢</text>`;
+  } else s += `<text x="${cx}" y="${cy + 6}" text-anchor="middle" font-size="15" font-family="sans-serif" fill="${css('--muted')}">${K} fifth${K === 1 ? '' : 's'} up</text>`;
+  $('spiral').innerHTML = s;
+  const rows = Array.from({ length: K + 1 }, (_, k) => fifthRow(k));
+  $('fifths').innerHTML = '<tr><th>Fifths</th><th>Note</th><th>Ratio in the octave</th><th>Pure ¢</th><th>Tempered ¢</th></tr>' + rows.map(r =>
+    `<tr><td class="num">${r.k}</td><td>${r.name}</td><td class="num">${r.k > 7 ? r.r.toFixed(4) : r.num + '/' + r.den}</td><td class="num">${r.c.toFixed(1)}</td><td class="num">${r.et}${r.k ? ` <span class="bt">(${sgn2(r.c - r.et)})</span>` : ''}</td></tr>`).join('');
+  $('stAl').innerHTML = `${K} pure fifths`;
+  $('stA').innerHTML = `(3/2)<sup>${K}</sup> = ${Math.pow(1.5, K).toFixed(2)}`;
+  $('stC').textContent = K === 12 ? (temp ? '0 ¢' : '23.46 ¢') : '—';
+}
+$('k').oninput = drawComma; $('tempered').onchange = drawComma;
+$('stack').onclick = () => { let k = 0; $('k').value = 0; drawComma(); const id = setInterval(() => { k++; $('k').value = k; drawComma(); tone(261.63 * fifthRow(k).r / (fifthRow(k).r >= 1.5 ? 2 : 1), 0.5, RICH, 0.14); if (k >= 12) clearInterval(id); }, 420); };
+
+// ---------- 4. equal temperament ----------
+const IV = [['Minor second', 16, 15], ['Major second', 9, 8], ['Minor third', 6, 5], ['Major third', 5, 4], ['Perfect fourth', 4, 3],
+  ['Tritone', 45, 32], ['Perfect fifth', 3, 2], ['Minor sixth', 8, 5], ['Major sixth', 5, 3], ['Minor seventh', 16, 9], ['Major seventh', 15, 8], ['Octave', 2, 1]];
+let pick = 3;
+const ivData = f => IV.map(([name, p, q], i) => {
+  const just = cents(p / q), et = (i + 1) * 100, dev = et - just;
+  const beat = p <= 10 ? Math.abs(p * f - q * f * Math.pow(2, (i + 1) / 12)) : null;
+  return { name, p, q, just, et, dev, beat, i };
+});
+function drawET() {
+  const m = +$('root').value, f = 440 * Math.pow(2, (m - 69) / 12);
+  $('rootv').textContent = NAMES[m % 12] + (Math.floor(m / 12) - 1) + ' · ' + f.toFixed(2) + ' Hz';
+  const rows = ivData(f);
+  $('et').innerHTML = '<tr><th>Interval</th><th>Just ratio</th><th>Just ¢</th><th>Tempered ¢</th><th>Off by</th><th></th><th>Beats/s</th></tr>' + rows.map(r => `
+    <tr class="pick${r.i === pick ? ' sel' : ''}" data-i="${r.i}"><td>${r.name}</td><td class="num">${r.p}:${r.q}</td><td class="num">${r.just.toFixed(2)}</td><td class="num">${r.et}</td>
+    <td class="num" style="color:${Math.abs(r.dev) > 10 ? css('--beat') : 'inherit'}">${Math.abs(r.dev) < 0.005 ? '0' : sgn2(r.dev)}¢</td>
+    <td><div class="dev"><i style="${r.dev >= 0 ? 'left:50%' : 'right:50%'};width:${Math.min(50, Math.abs(r.dev) / 18 * 50)}%;background:${r.dev >= 0 ? css('--beat') : css('--hi')}"></i></div></td>
+    <td class="num">${r.beat == null ? '—' : r.beat.toFixed(1)}</td></tr>`).join('');
+  document.querySelectorAll('#et tr.pick').forEach(tr => tr.onclick = () => { pick = +tr.dataset.i; drawET(); });
+  const r = rows[pick];
+  $('etPick').innerHTML = `${r.name}: tempered is <b>${sgn2(r.dev)}¢</b> from ${r.p}:${r.q}` + (r.beat != null ? `; the ${r.p}th harmonic of the lower note and the ${r.q}th of the upper beat <b>${r.beat.toFixed(1)}</b> times a second.` : '; its shared harmonics are too high to hear beating.');
+  $('envETt').textContent = r.beat != null ? `Equal-tempered: ${r.beat.toFixed(1)} beats a second` : 'Equal-tempered: no audible shared harmonic';
+  envelope($('envJust'), 0);
+  envelope($('envET'), r.beat ?? 0);
+}
+function envelope(c, d) {
+  const [g, w, h] = fit(c), mid = h / 2, A = h * 0.42;
+  g.fillStyle = css('--accent'); g.globalAlpha = 0.25; g.beginPath();
+  for (let i = 0; i <= 400; i++) g.lineTo(i / 400 * w, mid - A * Math.abs(Math.cos(Math.PI * d * i / 400)));
+  for (let i = 400; i >= 0; i--) g.lineTo(i / 400 * w, mid + A * Math.abs(Math.cos(Math.PI * d * i / 400)));
+  g.fill(); g.globalAlpha = 1;
+  g.strokeStyle = css('--accent'); g.lineWidth = 1.5;
+  for (const s of [1, -1]) { g.beginPath(); for (let i = 0; i <= 400; i++) g.lineTo(i / 400 * w, mid - s * A * Math.abs(Math.cos(Math.PI * d * i / 400))); g.stroke(); }
+  g.fillStyle = css('--muted'); g.font = '11px sans-serif'; g.fillText('0 s', 2, h - 3); g.textAlign = 'right'; g.fillText('1 s', w - 2, h - 3);
+}
+$('root').oninput = drawET;
+const playPair = r => { const m = +$('root').value, f = 440 * Math.pow(2, (m - 69) / 12); tone(f, 3.5, RICH); tone(f * r, 3.5, RICH); };
+$('playJust').onclick = () => playPair(IV[pick][1] / IV[pick][2]);
+$('playET').onclick = () => playPair(Math.pow(2, (pick + 1) / 12));
+
+// ---------- loop ----------
+function frame(now) {
+  if (!paused) t += (now - last) / 1000;
+  last = now;
+  drawModes(); drawPluck();
+  requestAnimationFrame(frame);
+}
+function all() { modeText(); drawBeats(); drawInterval(); drawComma(); drawET(); }
+all();
+window.addEventListener('resize', all);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', all);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

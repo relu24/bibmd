@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moving clocks run slow</title>
+<style>
+  :root {
+    --bg: #f4efe4;
+    --paper: #fbf8f1;
+    --ink: #1d1a16;
+    --muted: #6b6457;
+    --faint: #b9b0a0;
+    --rule: #ddd4c2;
+    --photon: #d9822b;
+    --photon-glow: rgba(217, 130, 43, 0.25);
+    --cool: #2f5d8a;
+    --cool-soft: rgba(47, 93, 138, 0.14);
+    --good: #3c7a4a;
+    --bad: #b2412f;
+    --mirror: #3b3833;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1017;
+      --paper: #141924;
+      --ink: #ece6d8;
+      --muted: #9a9384;
+      --faint: #4a4f5c;
+      --rule: #262c3a;
+      --photon: #ffb347;
+      --photon-glow: rgba(255, 179, 71, 0.28);
+      --cool: #7fb2e5;
+      --cool-soft: rgba(127, 178, 229, 0.14);
+      --good: #78c08a;
+      --bad: #ef7d68;
+      --mirror: #cfc8b8;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0; color: var(--ink); background: var(--bg);
+    font: 17px/1.62 var(--serif);
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 56px 28px 96px; }
+  .kicker { font: 600 12px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--photon); }
+  h1 { font: 400 clamp(40px, 7vw, 68px)/1.02 var(--serif); letter-spacing: -.02em; margin: 14px 0 18px; }
+  h1 em { color: var(--photon); font-style: italic; }
+  h2 { font: 400 32px/1.15 var(--serif); margin: 0 0 10px; letter-spacing: -.01em; }
+  .num { font: 600 12px/1 var(--mono); color: var(--muted); letter-spacing: .14em; display: block; margin-bottom: 10px; }
+  .lede { font-size: 21px; color: var(--muted); max-width: 680px; }
+  p { max-width: 700px; }
+  section { margin-top: 72px; }
+  .hook {
+    margin-top: 36px; padding: 22px 26px; border-left: 3px solid var(--photon);
+    background: var(--paper); border-radius: 0 12px 12px 0; font-size: 19px;
+  }
+  .panel {
+    background: var(--paper); border: 1px solid var(--rule); border-radius: 16px;
+    padding: 18px; margin: 22px 0;
+  }
+  canvas { display: block; width: 100%; }
+  .controls { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: center; margin-top: 14px; font-family: var(--sans); font-size: 14px; }
+  .ctl { display: flex; flex-direction: column; gap: 4px; min-width: 210px; flex: 1; }
+  .ctl label { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
+  .ctl label b { font: 600 13px var(--mono); color: var(--ink); }
+  input[type=range] { width: 100%; accent-color: var(--photon); }
+  button {
+    font: 600 13px var(--sans); padding: 8px 16px; border-radius: 999px; border: 1px solid var(--rule);
+    background: var(--bg); color: var(--ink); cursor: pointer;
+  }
+  button.primary { background: var(--photon); border-color: var(--photon); color: #1d1a16; }
+  button:hover { filter: brightness(1.06); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 16px; }
+  .stat { background: var(--bg); border-radius: 12px; padding: 12px 14px; }
+  .stat .l { font: 600 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .stat .v { font: 400 28px/1.2 var(--serif); margin-top: 4px; }
+  .stat .v small { font: 13px var(--mono); color: var(--muted); }
+  .stat.hot .v { color: var(--photon); }
+  .stat.cool .v { color: var(--cool); }
+  .eq {
+    font: italic 22px/1.5 var(--serif); text-align: center; padding: 14px; margin: 18px 0;
+    border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+  }
+  .eq .big { font-size: 30px; color: var(--photon); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 720px) { .two { grid-template-columns: 1fr; } }
+  .derive ol { padding-left: 22px; margin: 6px 0; }
+  .derive li { margin: 6px 0; }
+  .note { font: 13px/1.5 var(--sans); color: var(--muted); }
+  .badge { display: inline-block; font: 600 12px var(--sans); padding: 4px 10px; border-radius: 999px; }
+  .badge.good { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+  .badge.bad { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+  .badge.hot { background: var(--photon-glow); color: var(--photon); }
+  .bars { display: grid; gap: 10px; margin-top: 12px; font-family: var(--sans); font-size: 13px; }
+  .bar { display: grid; grid-template-columns: 150px 1fr 90px; gap: 12px; align-items: center; }
+  .bar .track { height: 14px; border-radius: 7px; background: var(--cool-soft); overflow: hidden; }
+  .bar .fill { height: 100%; border-radius: 7px; background: var(--cool); transition: width .15s; }
+  .bar .fill.hot { background: var(--photon); }
+  .bar span:last-child { font-family: var(--mono); text-align: right; }
+  .closing { background: var(--paper); border-radius: 16px; padding: 26px 30px; border: 1px solid var(--rule); }
+  .closing li { margin: 8px 0; }
+  footer { margin-top: 40px; color: var(--muted); font: 13px var(--sans); }
+</style>
+</head>
+<body>
+<main>
+  <div class="kicker">Special relativity · an interactive explainer</div>
+  <h1>Moving clocks <em>run slow</em></h1>
+  <p class="lede">Not because their gears get tired, and not as an illusion. It falls straight out of one
+    stubborn fact: every observer measures the same speed of light. All you need is a triangle.</p>
+
+  <div class="hook">
+    High in the atmosphere, cosmic rays make muons: particles that live, on average, 2.2 millionths of a
+    second. Even at the speed of light that is only 660 metres of travel. They are born 15 km up.
+    <b>Yet detectors on the ground catch them by the thousand.</b> By the end of this page you will know why.
+  </div>
+
+  <!-- 1 -->
+  <section id="clock">
+    <span class="num">01 — THE LIGHT CLOCK</span>
+    <h2>A clock made of light</h2>
+    <p>Take the simplest clock imaginable: a flash of light bouncing between two mirrors a distance
+      <i>L</i> apart. Each trip from one mirror to the other is one <b>tick</b>, and takes <i>L/c</i>.
+      Now put an identical clock on a ship moving to the right at speed <i>v</i>. Watch both from the ground.</p>
+    <div class="panel">
+      <canvas id="clockCanvas" height="360"></canvas>
+      <div class="controls">
+        <div class="ctl"><label>Ship speed <b id="betaOut">0.60 c</b></label>
+          <input id="beta" type="range" min="0" max="0.99" step="0.01" value="0.6"></div>
+        <div class="ctl"><label>Time on the ground <b id="tOut">0.00 L/c</b></label>
+          <input id="time" type="range" min="0" max="6" step="0.01" value="2.5"></div>
+        <button id="play" class="primary">Play</button>
+        <button id="rewind">Rewind</button>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="l">Ticks, clock at rest</div><div class="v" id="ticksRest">0</div></div>
+        <div class="stat hot"><div class="l">Ticks, moving clock</div><div class="v" id="ticksMove">0</div></div>
+        <div class="stat"><div class="l">One moving tick lasts</div><div class="v" id="tickLen">1.25 <small>L/c</small></div></div>
+      </div>
+    </div>
+    <p>From the ground, the moving photon cannot go straight up: the top mirror has moved on by the time
+      the light arrives, so the light runs along a <b>diagonal</b>. A diagonal is longer than the
+      vertical. And light, for everybody, goes at exactly <i>c</i>. Longer path, same speed: each tick of
+      the moving clock takes longer. The ship's clock runs slow.</p>
+  </section>
+
+  <!-- 2 -->
+  <section id="triangle">
+    <span class="num">02 — THE TRIANGLE</span>
+    <h2>Pythagoras finds γ</h2>
+    <p>Freeze one tick of the moving clock. In the time <i>t</i> the ground measures, the light covers the
+      hypotenuse <i>c·t</i> while the ship moves <i>v·t</i> sideways. The vertical leg is still the mirror
+      gap, <i>L = c·t₀</i>, where <i>t₀</i> is a tick on a clock at rest.</p>
+    <div class="two">
+      <div class="panel"><canvas id="triCanvas" height="300"></canvas></div>
+      <div class="panel derive">
+        <ol>
+          <li>Pythagoras: (c·t)² = (c·t₀)² + (v·t)²</li>
+          <li>Collect the <i>t</i>: t²(c² − v²) = c²·t₀²</li>
+          <li>Divide by c²: t²(1 − v²/c²) = t₀²</li>
+          <li>Take the root:</li>
+        </ol>
+        <div class="eq"><span class="big">t = γ · t₀</span>, &nbsp; γ = 1 / √(1 − v²/c²)</div>
+        <div class="note" id="triNums"></div>
+      </div>
+    </div>
+    <p>γ, the <b>Lorentz factor</b>, is the stretch. Here it is against speed. Click or drag on the curve.
+      It barely leaves 1 at everyday speeds (a jet at 250 m/s has γ − 1 ≈ 3·10⁻¹³) and then shoots to
+      infinity as <i>v</i> approaches <i>c</i>.</p>
+    <div class="panel">
+      <canvas id="gammaCanvas" height="260" style="cursor:crosshair"></canvas>
+      <div class="controls">
+        <div class="ctl"><label>Speed <b id="beta2Out">0.60 c</b></label>
+          <input id="beta2" type="range" min="0" max="0.99" step="0.01" value="0.6"></div>
+      </div>
+      <div class="stats">
+        <div class="stat hot"><div class="l">γ</div><div class="v" id="gammaOut">1.250</div></div>
+        <div class="stat"><div class="l">1 hour on board =</div><div class="v" id="hourOut">75 <small>min on the ground</small></div></div>
+        <div class="stat cool"><div class="l">A 100 m ship measures</div><div class="v" id="shipLen">80 <small>m from the ground</small></div></div>
+      </div>
+    </div>
+    <p>The same γ shrinks lengths along the motion: a moving ruler is <b>1/γ</b> as long as at rest
+      (look at the moving clock above: it is squeezed). Time stretches by γ, length shrinks by γ, and
+      the two together keep the speed of light the same for everyone.</p>
+  </section>
+
+  <!-- 3 -->
+  <section id="twins">
+    <span class="num">03 — THE TWINS</span>
+    <h2>The trip calculator</h2>
+    <p>Two twins. One stays home, one flies to a star and back at a steady speed. Choose the trip.</p>
+    <div class="panel">
+      <div class="controls" style="margin-top:0">
+        <div class="ctl"><label>Distance to the star <b id="dOut">10 ly</b></label>
+          <input id="dist" type="range" min="1" max="40" step="0.5" value="10"></div>
+        <div class="ctl"><label>Ship speed <b id="tbOut">0.900 c</b></label>
+          <input id="tbeta" type="range" min="0.1" max="0.999" step="0.001" value="0.9"></div>
+        <div class="ctl"><label>Age at departure <b id="ageOut">30</b></label>
+          <input id="age" type="range" min="18" max="60" step="1" value="30"></div>
+      </div>
+      <div class="stats">
+        <div class="stat cool"><div class="l">Twin at home, on return</div><div class="v" id="ageHome">—</div></div>
+        <div class="stat hot"><div class="l">Traveller, on return</div><div class="v" id="ageShip">—</div></div>
+        <div class="stat"><div class="l">Age gap</div><div class="v" id="ageGap">—</div></div>
+        <div class="stat"><div class="l">γ</div><div class="v" id="tGamma">—</div></div>
+      </div>
+      <canvas id="twinCanvas" height="380" style="margin-top:16px"></canvas>
+      <div class="note">Spacetime diagram: up is time on Earth, across is distance. Dots on each worldline mark
+        one birthday (every <span id="every">1 year</span>) on that twin's own clock.</div>
+      <div class="bars">
+        <div class="bar"><span>Distance, Earth's view</span><div class="track"><div class="fill" id="barEarth"></div></div><span id="barEarthV"></span></div>
+        <div class="bar"><span>Distance, ship's view</span><div class="track"><div class="fill hot" id="barShip"></div></div><span id="barShipV"></span></div>
+      </div>
+    </div>
+    <p>Two stories, one answer. On Earth: the traveller's clock runs slow by γ, so she ages
+      <i>2d / (v·γ)</i>. On the ship: nothing is wrong with her clock, but the trip is shorter: the
+      distance to the star is <b>length-contracted</b> to <i>d/γ</i>. Both give the same age.</p>
+    <p>Why isn't it symmetric, each twin seeing the other's clock as slow? Because only the traveller
+      turns around. The kink in her worldline is a real, felt acceleration, and it is the stay-at-home
+      twin whose path through spacetime is the long one between the two meetings.</p>
+  </section>
+
+  <!-- 4 -->
+  <section id="muons">
+    <span class="num">04 — THE MUONS</span>
+    <h2>Back to the sky</h2>
+    <p>A muon's mean life at rest is τ = 2.197 μs. Out of a million made at altitude <i>h</i>, the number
+      still alive after flying for a time <i>t</i> is 1,000,000 · e<sup>−t/τ</sup>. The question is just:
+      whose <i>t</i>?</p>
+    <div class="panel">
+      <div class="controls" style="margin-top:0">
+        <div class="ctl"><label>Altitude of birth <b id="hOut">15 km</b></label>
+          <input id="alt" type="range" min="2" max="20" step="0.5" value="15"></div>
+        <div class="ctl"><label>Muon speed <b id="mbOut">0.9980 c</b></label>
+          <input id="mbeta" type="range" min="0.95" max="0.9999" step="0.0001" value="0.998"></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="l">Flight time, ground clock</div><div class="v" id="flight">—</div></div>
+        <div class="stat"><div class="l">Survivors, no relativity</div><div class="v" id="survNo">—</div></div>
+        <div class="stat hot"><div class="l">Survivors, with γ</div><div class="v" id="survYes">—</div></div>
+        <div class="stat cool"><div class="l">Atmosphere, muon's view</div><div class="v" id="atmo">—</div></div>
+      </div>
+      <canvas id="muonCanvas" height="300" style="margin-top:16px"></canvas>
+      <div class="note">Muons still alive (of 1,000,000) as they fall from the birth altitude to the ground.
+        Grey: if their clocks ran at the ground's rate. Orange: with time dilation.</div>
+    </div>
+    <p>From the ground, the muon's internal clock is slowed by γ, so it has γ lifetimes to spend on the
+      way down. From the muon's side its clock is fine, but the atmosphere rushes at it contracted to
+      <i>h/γ</i>, a few hundred metres. Same survivors either way. This was measured: in the 1940s and,
+      precisely, in 1963 on a mountain and at sea level.</p>
+  </section>
+
+  <section>
+    <div class="closing">
+      <span class="num">WHAT YOU JUST SAW</span>
+      <ul>
+        <li>A light clock in motion traces a diagonal; with light's speed fixed, the tick gets longer.</li>
+        <li>Pythagoras on that diagonal gives <b>γ = 1/√(1 − v²/c²)</b>: about 1 for anything we build, unbounded near <i>c</i>.</li>
+        <li>Lengths along the motion shrink by the same γ, so each observer's account agrees on what actually happens.</li>
+        <li>The twin who turns around ages less: a trip of 2·10 ly at 0.9 c costs her 9.7 years, not 22.2.</li>
+        <li>Cosmic-ray muons reach the ground because their clocks, seen from here, run γ times slow.</li>
+      </ul>
+    </div>
+  </section>
+  <footer>Units: c = 1 light-year per year in the trip calculator; c = 299,792 km/s for the muons.</footer>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const gamma = b => 1 / Math.sqrt(1 - b * b);
+  let C = {};
+  const readColors = () => { C = { ink: css('--ink'), muted: css('--muted'), faint: css('--faint'), rule: css('--rule'),
+    photon: css('--photon'), glow: css('--photon-glow'), cool: css('--cool'), coolSoft: css('--cool-soft'),
+    mirror: css('--mirror'), paper: css('--paper'), bg: css('--bg'), good: css('--good'), bad: css('--bad') }; };
+  readColors();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readColors(); drawAll(); });
+
+  function setup(cv) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth, h = +cv.getAttribute('height');
+    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + 'px'; }
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+    return [g, w, h];
+  }
+  const mono = (g, s, px = 12, bold) => { g.font = `${bold ? '600 ' : ''}${px}px ui-monospace, Menlo, Consolas, monospace`; };
+
+  // ---------- state
+  let beta = 0.6, t = 2.5, playing = false;
+  const T_MAX = 6;
+
+  // ---------- 1: light clock
+  function photonY(time, g) { const p = time / g; const k = Math.floor(p); const f = p - k; return k % 2 === 0 ? f : 1 - f; }
+  function drawClock() {
+    const [g, w, h] = setup($('clockCanvas'));
+    const G = gamma(beta);
+    const pad = 28, laneH = (h - 3 * pad) / 2;
+    const scale = Math.min(laneH - 20, (w - 60) / (T_MAX + 1.4));
+    const lanes = [{ y0: pad, title: 'AT REST', moving: false }, { y0: 2 * pad + laneH, title: `MOVING AT ${beta.toFixed(2)} c`, moving: true }];
+    for (const lane of lanes) {
+      const top = lane.y0 + 18, bot = top + scale;
+      mono(g, '', 11, true); g.fillStyle = lane.moving ? C.photon : C.muted; g.fillText(lane.title, 6, lane.y0 + 4);
+      const GG = lane.moving ? G : 1, v = lane.moving ? beta : 0;
+      const x0 = 30 + scale * 0.35;
+      const cx = x0 + v * t * scale;
+      // trail
+      g.strokeStyle = lane.moving ? C.photon : C.photon; g.globalAlpha = 0.35; g.lineWidth = 1.5; g.setLineDash([4, 4]);
+      g.beginPath();
+      const n = Math.floor(t / GG);
+      for (let k = 0; k <= n; k++) {
+        const tk = k * GG; const xk = x0 + v * tk * scale; const yk = k % 2 === 0 ? bot : top;
+        k === 0 ? g.moveTo(xk, yk) : g.lineTo(xk, yk);
+      }
+      g.lineTo(cx, bot - photonY(t, GG) * scale); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+      // ghosts of the clock at each tick
+      if (lane.moving) {
+        for (let k = 1; k <= n; k++) {
+          const xk = x0 + v * k * GG * scale;
+          g.strokeStyle = C.faint; g.lineWidth = 1;
+          g.beginPath(); g.moveTo(xk - scale * 0.3 / G, top); g.lineTo(xk + scale * 0.3 / G, top);
+          g.moveTo(xk - scale * 0.3 / G, bot); g.lineTo(xk + scale * 0.3 / G, bot); g.stroke();
+        }
+      }
+      // mirrors (contracted when moving)
+      const half = scale * 0.3 / GG;
+      g.strokeStyle = C.mirror; g.lineWidth = 4; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(cx - half, top); g.lineTo(cx + half, top); g.moveTo(cx - half, bot); g.lineTo(cx + half, bot); g.stroke();
+      g.strokeStyle = C.faint; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(cx - half, top); g.lineTo(cx - half, bot); g.moveTo(cx + half, top); g.lineTo(cx + half, bot); g.stroke();
+      // photon
+      const py = bot - photonY(t, GG) * scale;
+      g.fillStyle = C.glow; g.beginPath(); g.arc(cx, py, 11, 0, 7); g.fill();
+      g.fillStyle = C.photon; g.beginPath(); g.arc(cx, py, 5, 0, 7); g.fill();
+      // tick count
+      mono(g, '', 12); g.fillStyle = C.ink; g.textAlign = 'right';
+      g.fillText(`${Math.floor(t / GG)} ticks`, w - 8, lane.y0 + 4); g.textAlign = 'left';
+    }
+    $('ticksRest').textContent = Math.floor(t);
+    $('ticksMove').textContent = Math.floor(t / G);
+    $('tickLen').innerHTML = `${G.toFixed(2)} <small>L/c</small>`;
+    $('tOut').textContent = `${t.toFixed(2)} L/c`;
+  }
+
+  // ---------- 2: triangle + gamma curve
+  function drawTri() {
+    const [g, w, h] = setup($('triCanvas'));
+    const G = gamma(beta);
+    // legs: vertical L = 1, horizontal beta*G, hypotenuse G
+    const maxH = beta * G;
+    const s = Math.min((h - 70) / 1, (w - 90) / Math.max(maxH, 0.001), 180);
+    const ox = 40, oy = h - 40;
+    const vx = ox + maxH * s, ty = oy - s;
+    // vertical leg (rest tick)
+    g.lineWidth = 3; g.strokeStyle = C.muted;
+    g.beginPath(); g.moveTo(ox, oy); g.lineTo(ox, ty); g.stroke();
+    g.strokeStyle = C.cool; g.beginPath(); g.moveTo(ox, oy); g.lineTo(vx, oy); g.stroke();
+    g.strokeStyle = C.photon; g.beginPath(); g.moveTo(ox, oy); g.lineTo(vx, ty); g.stroke();
+    g.strokeStyle = C.faint; g.lineWidth = 1; g.setLineDash([3, 4]); g.beginPath(); g.moveTo(vx, oy); g.lineTo(vx, ty); g.stroke(); g.setLineDash([]);
+    g.strokeStyle = C.muted; g.lineWidth = 1; g.strokeRect(ox, oy - 12, 12, 12);
+    mono(g, '', 12, true);
+    g.fillStyle = C.muted; g.fillText('c·t₀ = L', ox + 6, ty - 8);
+    g.fillStyle = C.cool; g.textAlign = 'center'; g.fillText(`v·t = ${(beta * G).toFixed(2)}`, (ox + vx) / 2, oy + 20);
+    g.fillStyle = C.photon; g.textAlign = 'left';
+    g.fillText(`c·t = ${G.toFixed(2)}`, (ox + vx) / 2 + 10, (oy + ty) / 2 - 6);
+    g.fillStyle = C.photon; g.beginPath(); g.arc(vx, ty, 5, 0, 7); g.fill();
+    $('triNums').innerHTML = `At v = ${beta.toFixed(2)} c, in units of L: vertical 1, sideways ${(beta * G).toFixed(3)}, diagonal ${G.toFixed(3)}.<br>Check: ${G.toFixed(3)}² = 1 + ${(beta * G).toFixed(3)}² = ${(G * G).toFixed(3)}.`;
+  }
+  const GMAX = 8;
+  function gx(b, w) { return 44 + (w - 60) * b; }
+  function gy(G, h) { return h - 30 - (h - 50) * (Math.min(G, GMAX) - 1) / (GMAX - 1); }
+  function drawGamma() {
+    const [g, w, h] = setup($('gammaCanvas'));
+    mono(g, '', 11);
+    for (let k = 1; k <= GMAX; k++) {
+      const y = gy(k, h); g.strokeStyle = C.rule; g.lineWidth = 1; g.beginPath(); g.moveTo(44, y); g.lineTo(w - 16, y); g.stroke();
+      g.fillStyle = C.muted; g.textAlign = 'right'; g.fillText(k, 36, y + 4);
+    }
+    g.textAlign = 'center';
+    for (const b of [0, 0.2, 0.4, 0.6, 0.8, 1]) { g.fillStyle = C.muted; g.fillText(b === 1 ? 'c' : b.toFixed(1), gx(b, w), h - 10); }
+    g.strokeStyle = C.faint; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(gx(1, w), 14); g.lineTo(gx(1, w), h - 30); g.stroke(); g.setLineDash([]);
+    g.strokeStyle = C.photon; g.lineWidth = 2.5; g.beginPath();
+    for (let i = 0; i <= 400; i++) { const b = i / 400 * 0.9922; const x = gx(b, w), y = gy(gamma(b), h); i ? g.lineTo(x, y) : g.moveTo(x, y); }
+    g.stroke();
+    const G = gamma(beta), x = gx(beta, w), y = gy(G, h);
+    g.strokeStyle = C.faint; g.lineWidth = 1; g.beginPath(); g.moveTo(x, h - 30); g.lineTo(x, y); g.lineTo(44, y); g.stroke();
+    g.fillStyle = C.glow; g.beginPath(); g.arc(x, y, 12, 0, 7); g.fill();
+    g.fillStyle = C.photon; g.beginPath(); g.arc(x, y, 6, 0, 7); g.fill();
+    g.textAlign = 'left'; g.fillStyle = C.ink; mono(g, '', 12, true);
+    g.fillText(`γ = ${G.toFixed(3)}`, Math.min(x + 12, w - 110), Math.max(y - 12, 24));
+    g.textAlign = 'left'; g.fillStyle = C.muted; mono(g, '', 11); g.fillText('γ', 8, 18);
+    $('gammaOut').textContent = G.toFixed(3);
+    $('hourOut').innerHTML = `${(60 * G).toFixed(0)} <small>min on the ground</small>`;
+    $('shipLen').innerHTML = `${(100 / G).toFixed(0)} <small>m from the ground</small>`;
+  }
+  function onGamma(e) {
+    const r = $('gammaCanvas').getBoundingClientRect();
+    const b = Math.max(0, Math.min(0.99, (e.clientX - r.left - 44) / (r.width - 60)));
+    setBeta(Math.round(b * 100) / 100);
+  }
+  let dragging = false;
+  $('gammaCanvas').addEventListener('pointerdown', e => { dragging = true; onGamma(e); });
+  window.addEventListener('pointermove', e => { if (dragging) onGamma(e); });
+  window.addEventListener('pointerup', () => dragging = false);
+
+  function setBeta(b) {
+    beta = b; $('beta').value = b; $('beta2').value = b;
+    $('betaOut').textContent = `${b.toFixed(2)} c`; $('beta2Out').textContent = `${b.toFixed(2)} c`;
+    drawClock(); drawTri(); drawGamma();
+  }
+  $('beta').addEventListener('input', e => setBeta(+e.target.value));
+  $('beta2').addEventListener('input', e => setBeta(+e.target.value));
+  $('time').addEventListener('input', e => { t = +e.target.value; drawClock(); });
+  $('rewind').addEventListener('click', () => { t = 0; $('time').value = 0; drawClock(); });
+  let last = 0;
+  function frame(ts) {
+    if (!playing) return;
+    const dt = last ? (ts - last) / 1000 : 0; last = ts;
+    t += dt * 0.8; if (t > T_MAX) { t = T_MAX; playing = false; $('play').textContent = 'Play'; }
+    $('time').value = t; drawClock();
+    if (playing) requestAnimationFrame(frame);
+  }
+  $('play').addEventListener('click', () => {
+    playing = !playing; $('play').textContent = playing ? 'Pause' : 'Play';
+    if (playing) { if (t >= T_MAX) t = 0; last = 0; requestAnimationFrame(frame); }
+  });
+
+  // ---------- 3: twins
+  function niceStep(span) { for (const s of [1, 2, 5, 10, 20, 50, 100, 200, 500]) if (span / s <= 24) return s; return 1000; }
+  function drawTwins() {
+    const d = +$('dist').value, b = +$('tbeta').value, age = +$('age').value;
+    const G = gamma(b);
+    const tEarth = 2 * d / b, tShip = tEarth / G;
+    $('dOut').textContent = `${d} ly`; $('tbOut').textContent = `${b.toFixed(3)} c`; $('ageOut').textContent = age;
+    $('ageHome').innerHTML = `${(age + tEarth).toFixed(1)} <small>years old</small>`;
+    $('ageShip').innerHTML = `${(age + tShip).toFixed(1)} <small>years old</small>`;
+    $('ageGap').innerHTML = `${(tEarth - tShip).toFixed(1)} <small>years</small>`;
+    $('tGamma').textContent = G.toFixed(3);
+    $('barEarth').style.width = '100%'; $('barShip').style.width = (100 / G) + '%';
+    $('barEarthV').textContent = `${d.toFixed(1)} ly`; $('barShipV').textContent = `${(d / G).toFixed(2)} ly`;
+
+    const [g, w, h] = setup($('twinCanvas'));
+    const L = 56, R = w - 24, T = 20, B = h - 36;
+    const X = x => L + (R - L) * x / (d * 1.08);
+    const Y = tt => B - (B - T) * tt / tEarth;
+    mono(g, '', 11);
+    // axes
+    g.strokeStyle = C.rule; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(L, T); g.lineTo(L, B); g.lineTo(R, B); g.stroke();
+    g.fillStyle = C.muted; g.textAlign = 'center';
+    g.fillText('0', X(0), B + 16); g.fillText(`${d} ly`, X(d), B + 16);
+    g.textAlign = 'right'; g.fillText('0', L - 8, B + 4); g.fillText(`${tEarth.toFixed(1)} y`, L - 8, T + 4);
+    // light cone from departure
+    g.strokeStyle = C.faint; g.setLineDash([3, 5]);
+    g.beginPath(); g.moveTo(X(0), Y(0)); g.lineTo(X(Math.min(d * 1.08, tEarth)), Y(Math.min(d * 1.08, tEarth))); g.stroke(); g.setLineDash([]);
+    g.textAlign = 'left'; g.fillStyle = C.faint;
+    const lc = Math.min(d * 1.08, tEarth) * 0.45; g.fillText('light', X(lc) + 6, Y(lc) + 4);
+    // star
+    g.strokeStyle = C.faint; g.beginPath(); g.moveTo(X(d), T); g.lineTo(X(d), B); g.stroke();
+    g.fillStyle = C.muted; g.fillText('★ star', X(d) - 50, T + 2);
+    // worldlines
+    g.lineWidth = 3; g.strokeStyle = C.cool; g.beginPath(); g.moveTo(X(0), Y(0)); g.lineTo(X(0), Y(tEarth)); g.stroke();
+    g.strokeStyle = C.photon; g.beginPath(); g.moveTo(X(0), Y(0)); g.lineTo(X(d), Y(tEarth / 2)); g.lineTo(X(0), Y(tEarth)); g.stroke();
+    // birthdays
+    const step = niceStep(tEarth);
+    $('every').textContent = step === 1 ? '1 year' : `${step} years`;
+    for (let k = step; k < tEarth - 1e-9; k += step) { g.fillStyle = C.cool; g.beginPath(); g.arc(X(0), Y(k), 3.5, 0, 7); g.fill(); }
+    for (let k = step; k < tShip - 1e-9; k += step) {
+      const te = k * G; const x = te <= tEarth / 2 ? b * te : d - b * (te - tEarth / 2);
+      g.fillStyle = C.photon; g.beginPath(); g.arc(X(x), Y(te), 3.5, 0, 7); g.fill();
+    }
+    g.fillStyle = C.cool; g.textAlign = 'left'; mono(g, '', 12, true);
+    g.fillText(`home: ${tEarth.toFixed(1)} y`, X(0) + 12, Y(tEarth * 0.5) + 4);
+    g.fillStyle = C.photon; g.textAlign = 'right'; g.fillText(`traveller: ${tShip.toFixed(1)} y`, X(d) - 14, Y(tEarth / 2) + 4); g.textAlign = 'left';
+  }
+  for (const id of ['dist', 'tbeta', 'age']) $(id).addEventListener('input', drawTwins);
+
+  // ---------- 4: muons
+  const TAU = 2.197e-6, Cms = 299792458;
+  const fmt = n => n >= 1 ? Math.round(n).toLocaleString('en-US') : n >= 1e-3 ? n.toFixed(3) : n.toExponential(1);
+  function drawMuons() {
+    const hk = +$('alt').value, b = +$('mbeta').value, G = gamma(b);
+    $('hOut').textContent = `${hk} km`; $('mbOut').textContent = `${b.toFixed(4)} c`;
+    const v = b * Cms, tf = hk * 1000 / v;
+    const no = 1e6 * Math.exp(-tf / TAU), yes = 1e6 * Math.exp(-tf / (G * TAU));
+    $('flight').innerHTML = `${(tf * 1e6).toFixed(1)} <small>μs = ${(tf / TAU).toFixed(1)} τ</small>`;
+    $('survNo').textContent = fmt(no);
+    $('survYes').textContent = fmt(yes);
+    $('atmo').innerHTML = `${(hk * 1000 / G).toFixed(0)} <small>m thick (γ = ${G.toFixed(1)})</small>`;
+
+    const [g, w, h] = setup($('muonCanvas'));
+    const L = 70, R = w - 20, T = 16, B = h - 34;
+    const X = km => L + (R - L) * (1 - km / hk); // left = birth altitude, right = ground
+    const Y = n => B - (B - T) * n / 1e6;
+    mono(g, '', 11);
+    g.strokeStyle = C.rule; g.lineWidth = 1;
+    for (const f of [0, 0.25, 0.5, 0.75, 1]) {
+      g.beginPath(); g.moveTo(L, Y(f * 1e6)); g.lineTo(R, Y(f * 1e6)); g.stroke();
+      g.fillStyle = C.muted; g.textAlign = 'right'; g.fillText(`${(f * 1e6).toLocaleString('en-US')}`, L - 6, Y(f * 1e6) + 4);
+    }
+    g.textAlign = 'center';
+    g.fillText(`${hk} km`, X(hk), B + 18); g.fillText('ground', X(0), B + 18); g.fillText(`${(hk / 2).toFixed(hk % 2 ? 2 : 0)} km`, X(hk / 2), B + 18);
+    const curve = (life, col) => {
+      g.strokeStyle = col; g.lineWidth = 2.5; g.beginPath();
+      for (let i = 0; i <= 200; i++) { const km = hk * (1 - i / 200); const tt = (hk - km) * 1000 / v; const n = 1e6 * Math.exp(-tt / life); i ? g.lineTo(X(km), Y(n)) : g.moveTo(X(km), Y(n)); }
+      g.stroke();
+    };
+    curve(TAU, C.faint); curve(G * TAU, C.photon);
+    g.fillStyle = C.photon; g.beginPath(); g.arc(X(0), Y(yes), 6, 0, 7); g.fill();
+    g.textAlign = 'right'; mono(g, '', 12, true); g.fillText(fmt(yes), X(0) - 10, Math.max(Y(yes) - 10, T + 12));
+  }
+  for (const id of ['alt', 'mbeta']) $(id).addEventListener('input', drawMuons);
+
+  function drawAll() { drawClock(); drawTri(); drawGamma(); drawTwins(); drawMuons(); }
+  window.addEventListener('resize', drawAll);
+  drawAll();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flattening the curve</title>
+<style>
+  :root {
+    --paper: #f6f1e7; --card: #fffdf8; --ink: #1f1b16; --muted: #6d6458; --faint: #a59a8a; --rule: #e3d9c7;
+    --S: #2b7a8c; --I: #d4482b; --R: #4f8a55; --cap: #c48a12; --act: #6b5bd2;
+    --shadow: 0 1px 0 rgba(0,0,0,.04), 0 10px 30px -18px rgba(60,40,10,.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #15130f; --card: #1d1a15; --ink: #efe8db; --muted: #a89d8c; --faint: #6f6657; --rule: #322d25;
+      --S: #5fb3c4; --I: #f06a4b; --R: #7dbb7f; --cap: #e3a832; --act: #9d90f0;
+      --shadow: 0 1px 0 rgba(255,255,255,.03), 0 10px 30px -18px rgba(0,0,0,.8);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); color: var(--ink); }
+  body { margin: 0; font: 17px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 56px 24px 96px; }
+  .serif, h1, h2 { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; font-weight: 600; letter-spacing: -0.01em; }
+  h1 { font-size: clamp(44px, 7vw, 76px); line-height: 1; margin: 8px 0 18px; }
+  h1 em { font-style: italic; color: var(--I); }
+  h2 { font-size: 34px; line-height: 1.15; margin: 4px 0 14px; }
+  .eyebrow { font: 600 12px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .16em; text-transform: uppercase; color: var(--I); }
+  p, li { max-width: 680px; }
+  .lede { font-size: 20px; color: var(--muted); }
+  blockquote { margin: 26px 0; padding: 0 0 0 18px; border-left: 3px solid var(--I); font-family: Georgia, serif; font-style: italic; font-size: 20px; max-width: 640px; }
+  section { margin-top: 84px; }
+  .panel { background: var(--card); border: 1px solid var(--rule); border-radius: 16px; padding: 22px; box-shadow: var(--shadow); margin: 22px 0; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px 28px; margin-bottom: 16px; }
+  .ctl label { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); }
+  .ctl output { font: 600 14px ui-monospace, Menlo, Consolas, monospace; color: var(--ink); }
+  input[type=range] { width: 100%; accent-color: var(--I); margin: 6px 0 0; }
+  .ctl.s input { accent-color: var(--S); } .ctl.r input { accent-color: var(--R); } .ctl.a input { accent-color: var(--act); }
+  button { font: 600 14px system-ui, sans-serif; border-radius: 999px; padding: 8px 16px; border: 1px solid var(--rule); background: var(--paper); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--I); border-color: var(--I); color: #fff; }
+  button:disabled { opacity: .4; cursor: default; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 16px; }
+  .stat { border-top: 2px solid var(--rule); padding-top: 8px; }
+  .stat b { display: block; font: 600 28px/1.15 ui-monospace, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
+  .stat span { font-size: 13px; color: var(--muted); }
+  .stat.I b { color: var(--I); } .stat.R b { color: var(--R); } .stat.cap b { color: var(--cap); }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .legend i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  svg text { font: 12px ui-monospace, Menlo, Consolas, monospace; fill: var(--faint); }
+  .grid line { stroke: var(--rule); }
+  .tag { font: 600 12px ui-monospace, Menlo, monospace; }
+  .eq { font-family: Georgia, serif; font-style: italic; white-space: nowrap; }
+  .note { font-size: 14px; color: var(--muted); }
+  .flag { display: inline-block; font: 600 12px ui-monospace, monospace; padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--cap) 18%, transparent); color: var(--cap); }
+  .flag.good { background: color-mix(in srgb, var(--R) 18%, transparent); color: var(--R); }
+  .node { transition: opacity .35s ease, transform .35s ease; }
+  .drag { cursor: ew-resize; }
+  .summary { background: var(--card); border: 1px solid var(--rule); border-radius: 16px; padding: 8px 28px 18px; }
+  .summary li { margin: 10px 0; }
+  .compart { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 18px 0; font: 600 15px ui-monospace, Menlo, monospace; }
+  .compart .box { padding: 10px 16px; border-radius: 10px; color: #fff; }
+  .compart .arrow { color: var(--muted); font-weight: 400; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">An interactive explainer</div>
+  <h1>Flattening <em>the curve</em></h1>
+  <p class="lede">One person catches a new virus. A few months later, either most of a city of a million has had it, or almost nobody has, and the hospitals were either overrun or quietly coped. The difference comes down to a handful of numbers you can move below. Every chart on this page is computed live from the same small model.</p>
+  <blockquote>An epidemic is a chain reaction. Everything that matters is in how the chain grows, and in what makes it stop.</blockquote>
+
+  <!-- PART ONE -->
+  <section>
+    <div class="eyebrow">Part one</div>
+    <h2>One person's chain</h2>
+    <p><b>R₀</b> ("R nought") is the average number of people one infected person passes the virus to, in a population where nobody is immune yet. Each case below infects a random number of people with that average (a Poisson draw), and the chain is followed for four generations.</p>
+    <div class="panel">
+      <div class="controls">
+        <div class="ctl"><label>R₀: people infected per case <output id="r0o"></output></label><input id="r0" type="range" min="0.5" max="5" step="0.1" value="2.5"></div>
+        <div class="ctl"><label>The dice <output id="seedo"></output></label>
+          <div class="btns" style="margin-top:6px"><button class="primary" id="another">Another outbreak</button><button id="back">Back to #1</button></div></div>
+      </div>
+      <svg id="tree" viewBox="0 0 920 320"></svg>
+      <div class="stats">
+        <div class="stat I"><b id="g4"></b><span>cases in generation 4</span></div>
+        <div class="stat"><b id="g4e"></b><span>expected on average (R₀⁴)</span></div>
+        <div class="stat R"><b id="fz"></b><span>chance one case fizzles out</span></div>
+      </div>
+    </div>
+    <p>Press <b>Another outbreak</b> a few times. Above R₀ = 1 the average chain explodes, 1, R₀, R₀², R₀³…, yet many single introductions still die out by luck: the chance is the <span class="eq">q</span> that solves <span class="eq">q = e<sup>R₀(q − 1)</sup></span>. Below 1 every chain dies out eventually. Only the drawn cases are followed, at most 60 per row, so a "+" marks a row that is really bigger.</p>
+  </section>
+
+  <!-- PART TWO -->
+  <section>
+    <div class="eyebrow">Part two</div>
+    <h2>From chains to curves: the SIR model</h2>
+    <p>A chain cannot grow forever: the people it reaches are increasingly people who have already had it. The SIR model splits a population into <b>S</b>usceptible, <b>I</b>nfectious and <b>R</b>ecovered (immune) and moves people between them each day:</p>
+    <div class="compart">
+      <span class="box" style="background:var(--S)">S</span><span class="arrow">— β·S·I per day →</span>
+      <span class="box" style="background:var(--I)">I</span><span class="arrow">— I / D per day →</span>
+      <span class="box" style="background:var(--R)">R</span>
+    </div>
+    <p>where β = R₀ / D and D is how long someone stays infectious. The model starts with 100 infectious people in a city of a million, and steps forward one day at a time (Heun's method, a careful version of "rate × one day").</p>
+    <div class="panel">
+      <div class="controls">
+        <div class="ctl"><label>R₀ (the same dial as above) <output id="r0bo"></output></label><input id="r0b" type="range" min="0.5" max="5" step="0.1" value="2.5"></div>
+        <div class="ctl s"><label>Infectious period D (days) <output id="Do"></output></label><input id="D" type="range" min="3" max="14" step="0.5" value="7"></div>
+        <div class="ctl"><label>Watch it unfold</label><div class="btns" style="margin-top:6px"><button id="play">▶ Play</button><span class="note" id="cursorTxt">hover the chart to read a day</span></div></div>
+      </div>
+      <svg id="sir" viewBox="0 0 920 300"></svg>
+      <div class="legend"><span><i style="background:var(--S)"></i>S susceptible</span><span><i style="background:var(--I)"></i>I infectious</span><span><i style="background:var(--R)"></i>R recovered</span><span><i style="background:var(--S);opacity:.45"></i>S = 1/R₀</span></div>
+      <div class="stats">
+        <div class="stat I"><b id="pd"></b><span>peak day</span></div>
+        <div class="stat"><b id="pi"></b><span>infectious at the peak</span></div>
+        <div class="stat R"><b id="ev"></b><span>ever infected by day 300</span></div>
+        <div class="stat"><b id="dt"></b><span>early doubling time</span></div>
+      </div>
+    </div>
+    <p>Look at where the red curve turns. The epidemic peaks exactly when the susceptible share S falls below <b>1/R₀</b>: from then on each case infects fewer than one new person, because most of the people it meets are already immune. A longer infectious period with the same R₀ does not make the epidemic bigger; it stretches it out.</p>
+  </section>
+
+  <!-- PART THREE -->
+  <section>
+    <div class="eyebrow">Part three</div>
+    <h2>Flattening the curve</h2>
+    <p>Suppose 5% of infectious people need a hospital bed, and the city has 2,000 beds. At the peak above, that is far more than the hospitals have. Cutting contacts (working from home, smaller gatherings, masks) lowers β for as long as it lasts. The grey curve is the epidemic left alone. <b>Drag the shaded window</b> to move the measures in time.</p>
+    <div class="panel">
+      <div class="controls">
+        <div class="ctl a"><label>Contacts cut by <output id="co"></output></label><input id="c" type="range" min="0" max="80" step="5" value="40"></div>
+        <div class="ctl a"><label>Starts on day <output id="t0o"></output></label><input id="t0" type="range" min="0" max="150" step="1" value="25"></div>
+        <div class="ctl a"><label>Lasts (300 = to the end) <output id="leno"></output></label><input id="len" type="range" min="10" max="300" step="5" value="300"></div>
+      </div>
+      <svg id="beds" viewBox="0 0 920 300"></svg>
+      <div class="legend"><span><i style="background:var(--I)"></i>beds needed, with measures</span><span><i style="background:var(--faint)"></i>left alone</span><span><i style="background:var(--cap)"></i>2,000 beds</span><span><i style="background:var(--act);opacity:.4"></i>contacts cut</span></div>
+      <div class="stats">
+        <div class="stat I"><b id="pb"></b><span>peak beds needed</span></div>
+        <div class="stat"><b id="pd3"></b><span>peak day</span></div>
+        <div class="stat cap"><b id="oc"></b><span>days over capacity</span></div>
+        <div class="stat R"><b id="ev3"></b><span>ever infected by day 300</span></div>
+      </div>
+      <p class="note" id="alone"></p>
+    </div>
+    <p>Flattening buys time: the peak is lower and later, so the same beds can treat everyone. Notice what it does <i>not</i> do on its own: if the measures are lifted while most people are still susceptible (try <i>Lasts</i> = 60), the curve simply comes back. Contact reduction holds an epidemic down; only immunity ends it.</p>
+  </section>
+
+  <!-- PART FOUR -->
+  <section>
+    <div class="eyebrow">Part four</div>
+    <h2>Herd immunity and the final size</h2>
+    <p>If a share <b>v</b> of people are immune before the virus arrives (say, vaccinated), each case meets fewer susceptible people, and the effective reproduction number is <span class="eq">R = R₀·(1 − v)</span>. The epidemic cannot take off when that is below one, that is when</p>
+    <blockquote style="font-style:normal"><span class="eq">v ≥ 1 − 1/R₀</span>, the <b>herd immunity threshold</b>.</blockquote>
+    <p>And when it does take off, how many people does it reach in the end? The SIR model answers without simulating: the share <span class="eq">z</span> of the population ever infected solves the <b>final-size relation</b> <span class="eq">z = s₀·(1 − e<sup>−R₀·z</sup>)</span>, where <span class="eq">s₀ = 1 − v</span> is the share that was susceptible to begin with.</p>
+    <div class="panel">
+      <div class="controls">
+        <div class="ctl r"><label>Immune before the outbreak, v <output id="vo"></output></label><input id="v" type="range" min="0" max="90" step="1" value="0"></div>
+        <div class="ctl"><label>R₀ (drag the dot, or here) <output id="r0co"></output></label><input id="r0c" type="range" min="0.5" max="5" step="0.1" value="2.5"></div>
+      </div>
+      <svg id="fs" viewBox="0 0 920 300"></svg>
+      <div class="legend"><span><i style="background:var(--cap)"></i>herd immunity threshold 1 − 1/R₀</span><span><i style="background:var(--faint)"></i>final size, nobody immune</span><span><i style="background:var(--I)"></i>final size with v immune</span><span><i style="background:var(--R)"></i>already immune: v</span></div>
+      <div class="stats">
+        <div class="stat cap"><b id="ht"></b><span>herd immunity threshold</span></div>
+        <div class="stat"><b id="re"></b><span>effective R</span></div>
+        <div class="stat I"><b id="fz4"></b><span>final size (theory)</span></div>
+        <div class="stat R"><b id="ie"></b><span>immune in the end</span></div>
+      </div>
+      <p class="note" id="over"></p>
+      <p class="note" id="both"></p>
+    </div>
+    <p>Two things are worth seeing here. First, the red curve is always <i>above</i> the orange one: an unchecked epidemic does not stop at the herd immunity threshold, it overshoots it, because at the peak there are still many infectious people and each infects nearly one more on the way down. At R₀ = 2.5 the threshold is 60% but the epidemic reaches about 89%. Second, drag <b>v</b> up to the threshold and the red curve drops to zero at your R₀: immunity given in advance prevents the overshoot entirely.</p>
+  </section>
+
+  <section>
+    <h2>What you just saw</h2>
+    <div class="summary"><ul>
+      <li><b>R₀ is an average of a random process.</b> Chains above R₀ = 1 tend to explode, but a single introduction can still fizzle out by luck.</li>
+      <li><b>The SIR model turns chains into curves.</b> The epidemic peaks when the susceptible share falls to 1/R₀; the infectious period sets the pace, not the size.</li>
+      <li><b>Flattening</b> lowers and delays the peak so the hospitals cope. Lifted too early, it only postpones the wave.</li>
+      <li><b>Herd immunity</b> at 1 − 1/R₀ is the point where the epidemic turns, not where it ends: left alone it overshoots to the final size <span class="eq">z = s₀(1 − e<sup>−R₀z</sup>)</span>. Immunity in advance, above the threshold, means no wave at all.</li>
+    </ul></div>
+    <p class="note"><i>The model is deliberately simple: everyone mixes with everyone, immunity lasts, and nobody is born or moves. Real epidemics add age, places, seasons and chance, but this skeleton is what they are built on.</i></p>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+const fmt = (x, d = 0) => Number(x).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const N = 1e6, HOSP = 0.05, BEDS = 2000, CAP = 60, DAYS = 300;
+
+const st = { R0: 2.5, seed: 1, D: 7, c: 0.4, t0: 25, len: 300, v: 0, cursor: null };
+
+// ---------- the model (the same arithmetic as the bib document) ----------
+function unif(sd, g, j) {
+  let x = (sd * 7919 + g * 1013 + j * 7 + 1) % 233280;
+  for (let k = 0; k < 3; k++) x = (x * 9301 + 49297) % 233280;
+  return x / 233280;
+}
+function ladder(R) { const c = [Math.exp(-R)]; let p = c[0]; for (let m = 1; m <= 15; m++) { p = p * R / m; c.push(c[m - 1] + p); } return c; }
+function chain(R, seed) {
+  const lad = ladder(R), pois = u => { const k = lad.findIndex(c => c >= u); return k < 0 ? 15 : k; };
+  const gens = [[{ p: 0 }]];
+  for (let g = 1; g <= 4; g++) {
+    const prev = gens[g - 1], next = [];
+    prev.slice(0, CAP).forEach((n, j) => { const k = pois(unif(seed + 2, g, j)); for (let i = 0; i < k; i++) next.push({ p: j }); });
+    gens.push(next);
+  }
+  return gens;
+}
+function simulate(R, D, v, c, t0, len) {
+  const out = [{ s: 1 - v - 1e-4, i: 1e-4, r: v }];
+  for (let d = 0; d < DAYS; d++) {
+    const p = out[d], beta = R / D * (d >= t0 && d < t0 + len ? 1 - c : 1);
+    const n1 = beta * p.s * p.i, m1 = p.i / D, s2 = p.s - n1, i2 = p.i + n1 - m1, n2 = beta * s2 * i2;
+    const s = p.s - (n1 + n2) / 2, i = p.i + (n1 + n2 - m1 - i2 / D) / 2;
+    out.push({ s, i, r: 1 - s - i });
+  }
+  return out;
+}
+function finalSize(R, s0) {
+  if (R * s0 <= 1) return 0;
+  let z = s0;
+  for (let k = 0; k < 7; k++) z = z - (z - s0 * (1 - Math.exp(-R * z))) / (1 - s0 * R * Math.exp(-R * z));
+  return z;
+}
+const peakOf = sim => sim.reduce((m, p, d) => p.i > m.i ? { i: p.i, d } : m, { i: 0, d: 0 });
+
+// ---------- drawing helpers ----------
+const W = 920, H = 300, L = 62, Rr = 14, T = 14, B = 34;
+function frame(svg, ys, xs, xOf, yOf) {
+  svg.innerHTML = '';
+  const g = el('g', { class: 'grid' }, svg);
+  ys.forEach(([v, t]) => { el('line', { x1: L, x2: W - Rr, y1: yOf(v), y2: yOf(v) }, g); el('text', { x: L - 8, y: yOf(v) + 4, 'text-anchor': 'end' }, svg).textContent = t; });
+  xs.forEach(([v, t]) => { el('text', { x: xOf(v), y: H - 10, 'text-anchor': 'middle' }, svg).textContent = t; });
+}
+const path = (pts) => 'M' + pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('L');
+const dayX = d => L + (W - L - Rr) * d / DAYS;
+const dayTicks = [0, 50, 100, 150, 200, 250, 300].map(d => [d, d === 0 ? 'day 0' : String(d)]);
+
+// ---------- part one: the chain ----------
+function drawTree() {
+  const svg = $('tree'), gens = chain(st.R0, st.seed);
+  svg.innerHTML = '';
+  const gy = g => 30 + g * 65, nx = (j, n) => 150 + (W - 170) * (j + 0.5) / Math.min(n, CAP);
+  const cut = g => gens.slice(0, g + 1).some(x => x.length > CAP);
+  for (let g = 0; g <= 4; g++) {
+    el('text', { x: 4, y: gy(g) - 4, style: 'fill:var(--muted);font-family:system-ui;font-size:13px' }, svg).textContent = g === 0 ? 'patient zero' : 'generation ' + g;
+    el('text', { x: 4, y: gy(g) + 13, style: 'fill:var(--ink)' }, svg).textContent = gens[g].length + (cut(g) ? '+' : '') + '  (avg ' + fmt(Math.pow(st.R0, g), 1) + ')';
+  }
+  for (let g = 1; g <= 4; g++) {
+    const prev = gens[g - 1], cur = gens[g];
+    cur.slice(0, CAP).forEach((n, j) => {
+      const ln = el('line', { x1: nx(n.p, prev.length), y1: gy(g - 1), x2: nx(j, cur.length), y2: gy(g), stroke: 'var(--I)', 'stroke-opacity': 0.35, class: 'node' }, svg);
+      ln.style.opacity = 0; setTimeout(() => ln.style.opacity = 1, 120 * g + 4 * j);
+    });
+  }
+  for (let g = 0; g <= 4; g++) {
+    gens[g].slice(0, CAP).forEach((n, j) => {
+      const c = el('circle', { cx: nx(j, gens[g].length), cy: gy(g), r: g === 0 ? 9 : 5.5, fill: 'var(--I)', 'fill-opacity': g === 0 ? 1 : 1 - g * 0.15, class: 'node' }, svg);
+      c.style.opacity = 0; setTimeout(() => c.style.opacity = 1, 120 * g + 4 * j + 60);
+    });
+  }
+  if (gens[4].length === 0) el('text', { x: 535, y: 300, 'text-anchor': 'middle', style: 'fill:var(--R);font-family:system-ui;font-size:14px;font-weight:600' }, svg).textContent = 'This chain died out by itself.';
+  let q = 0; for (let i = 0; i < 40; i++) q = Math.exp(st.R0 * (q - 1));
+  $('g4').textContent = gens[4].length + (cut(4) ? '+' : '');
+  $('g4').parentElement.className = 'stat ' + (gens[4].length === 0 ? 'R' : 'I');
+  $('g4e').textContent = fmt(Math.pow(st.R0, 4), 1);
+  $('fz').textContent = Math.round(q * 100) + '%';
+  $('seedo').textContent = 'Outbreak #' + st.seed;
+  $('back').disabled = st.seed === 1;
+}
+
+// ---------- part two: SIR ----------
+let base;
+function drawSIR() {
+  const svg = $('sir');
+  base = simulate(st.R0, st.D, 0, 0, 0, 0);
+  const pk = peakOf(base), turn = base.findIndex(p => p.s < 1 / st.R0);
+  const yOf = v => T + (H - T - B) * (1 - v);
+  frame(svg, [0, .25, .5, .75, 1].map(v => [v, Math.round(v * 100) + '%']), dayTicks, dayX, yOf);
+  if (st.R0 > 1) el('line', { x1: L, x2: W - Rr, y1: yOf(1 / st.R0), y2: yOf(1 / st.R0), stroke: 'var(--S)', 'stroke-opacity': .45, 'stroke-dasharray': '5 5' }, svg);
+  if (turn > 0) {
+    el('line', { x1: dayX(turn), x2: dayX(turn), y1: T, y2: H - B, stroke: 'var(--I)', 'stroke-opacity': .4, 'stroke-dasharray': '3 4' }, svg);
+    el('text', { x: dayX(turn) + 6, y: T + 12, class: 'tag', style: 'fill:var(--I)' }, svg).textContent = 'peak, day ' + pk.d;
+  }
+  const upto = st.cursor == null ? DAYS : st.cursor;
+  const series = [['s', 'var(--S)', 2.5], ['r', 'var(--R)', 2.5], ['i', 'var(--I)', 3.2]];
+  series.forEach(([k, col, wd]) => el('path', { d: path(base.slice(0, upto + 1).map((p, d) => [dayX(d), yOf(p[k])])), fill: 'none', stroke: col, 'stroke-width': wd, 'stroke-linejoin': 'round' }, svg));
+  if (st.cursor != null) {
+    const p = base[st.cursor];
+    el('line', { x1: dayX(st.cursor), x2: dayX(st.cursor), y1: T, y2: H - B, stroke: 'var(--muted)', 'stroke-opacity': .5 }, svg);
+    series.forEach(([k, col]) => el('circle', { cx: dayX(st.cursor), cy: yOf(p[k]), r: 4.5, fill: col }, svg));
+    $('cursorTxt').textContent = `day ${st.cursor}: S ${fmt(p.s * 100, 1)}% · I ${fmt(p.i * 100, 1)}% · R ${fmt(p.r * 100, 1)}%`;
+  }
+  const hit = el('rect', { x: L, y: T, width: W - L - Rr, height: H - T - B, fill: 'transparent' }, svg);
+  hit.addEventListener('mousemove', e => { if (playing) return; const r = svg.getBoundingClientRect(); const x = (e.clientX - r.left) * W / r.width; st.cursor = Math.max(0, Math.min(DAYS, Math.round((x - L) / (W - L - Rr) * DAYS))); drawSIR(); });
+  hit.addEventListener('mouseleave', () => { if (playing) return; st.cursor = null; drawSIR(); $('cursorTxt').textContent = 'hover the chart to read a day'; });
+  $('pd').textContent = pk.i < 0.001 ? 'none' : 'day ' + pk.d;
+  $('pi').textContent = fmt(pk.i * 100, 1) + '%';
+  $('ev').textContent = fmt(base[DAYS].r * 100, 1) + '%';
+  $('dt').textContent = st.R0 > 1 ? fmt(Math.log(2) * st.D / (st.R0 - 1), 1) + ' days' : 'never';
+}
+let playing = false;
+$('play').onclick = () => {
+  if (playing) return; playing = true; $('play').disabled = true;
+  const t0 = performance.now();
+  const step = now => { st.cursor = Math.min(DAYS, Math.round((now - t0) / 12)); drawSIR(); if (st.cursor < DAYS) requestAnimationFrame(step); else { playing = false; $('play').disabled = false; } };
+  requestAnimationFrame(step);
+};
+
+// ---------- part three: flattening ----------
+let flat;
+function drawBeds() {
+  const svg = $('beds');
+  flat = simulate(st.R0, st.D, 0, st.c, st.t0, st.len);
+  const pk = peakOf(flat), pb = peakOf(base), cap = BEDS / (N * HOSP);
+  const top = Math.ceil(Math.max(pb.i, cap * 1.3) * N * HOSP / 1000) * 1000 / (N * HOSP);
+  const yOf = v => T + (H - T - B) * (1 - Math.min(v, top) / top);
+  frame(svg, [0, .25, .5, .75, 1].map(g => [top * g, fmt(top * g * N * HOSP)]), dayTicks, dayX, yOf);
+  const x0 = dayX(st.t0), x1 = dayX(Math.min(st.t0 + st.len, DAYS));
+  const win = el('rect', { x: x0, y: T, width: x1 - x0, height: H - T - B, fill: 'var(--act)', 'fill-opacity': .1, class: 'drag' }, svg);
+  el('text', { x: x0 + 8, y: T + 14, class: 'tag', style: 'fill:var(--act)' }, svg).textContent = `contacts −${Math.round(st.c * 100)}%  ⇠ drag ⇢`;
+  const pts = flat.map((p, d) => [dayX(d), yOf(p.i)]);
+  el('path', { d: path(pts) + `L${dayX(DAYS)},${yOf(0)}L${dayX(0)},${yOf(0)}Z`, fill: 'var(--I)', 'fill-opacity': .13 }, svg);
+  el('path', { d: path(base.map((p, d) => [dayX(d), yOf(p.i)])), fill: 'none', stroke: 'var(--faint)', 'stroke-width': 2, 'stroke-dasharray': '6 4' }, svg);
+  el('path', { d: path(pts), fill: 'none', stroke: 'var(--I)', 'stroke-width': 3.2 }, svg);
+  el('line', { x1: L, x2: W - Rr, y1: yOf(cap), y2: yOf(cap), stroke: 'var(--cap)', 'stroke-width': 2 }, svg);
+  el('text', { x: W - Rr - 4, y: yOf(cap) - 7, 'text-anchor': 'end', class: 'tag', style: 'fill:var(--cap)' }, svg).textContent = '2,000 beds';
+  // drag the window
+  win.addEventListener('pointerdown', e => {
+    win.setPointerCapture(e.pointerId);
+    const r = svg.getBoundingClientRect(), startX = e.clientX, startT = st.t0;
+    const move = ev => { const dd = Math.round((ev.clientX - startX) * W / r.width / (W - L - Rr) * DAYS); st.t0 = Math.max(0, Math.min(150, startT + dd)); $('t0').value = st.t0; render(['beds', 'fs']); };
+    win.addEventListener('pointermove', move);
+    win.addEventListener('pointerup', () => win.removeEventListener('pointermove', move), { once: true });
+  });
+  const over = flat.filter(p => p.i > cap).length;
+  $('pb').textContent = fmt(pk.i * N * HOSP);
+  $('pb').parentElement.className = 'stat ' + (pk.i > cap ? 'I' : 'R');
+  $('pd3').textContent = pk.i < 0.001 ? 'none' : 'day ' + pk.d;
+  $('oc').textContent = over;
+  $('ev3').textContent = fmt(flat[DAYS].r * 100, 1) + '%';
+  const wave = st.len < 300 && st.t0 + st.len < 300 && pk.d > st.t0 + st.len;
+  $('alone').innerHTML = `Left alone: peak ${fmt(pb.i * N * HOSP)} beds on day ${pb.d}, ${Math.round(base[DAYS].r * 100)}% infected.` + (wave ? ' <span class="flag">second wave after the measures end</span>' : '');
+}
+
+// ---------- part four: herd immunity ----------
+const fs1 = Array.from({ length: 51 }, (_, k) => finalSize(1 + k / 10, 1));
+function drawFS() {
+  const svg = $('fs'), v = st.v, R0 = st.R0;
+  const xOf = R => L + (W - L - Rr) * (R - 1) / 5, yOf = f => T + (H - T - B) * (1 - f);
+  frame(svg, [0, .25, .5, .75, 1].map(g => [g, Math.round(g * 100) + '%']), [1, 2, 3, 4, 5, 6].map(r => [r, r === 1 ? 'R₀ = 1' : String(r)]), xOf, yOf);
+  const ks = Array.from({ length: 51 }, (_, k) => 1 + k / 10);
+  el('line', { x1: L, x2: W - Rr, y1: yOf(v), y2: yOf(v), stroke: 'var(--R)', 'stroke-width': 2, 'stroke-opacity': .8 }, svg);
+  el('path', { d: path(ks.map(r => [xOf(r), yOf(1 - 1 / r)])), fill: 'none', stroke: 'var(--cap)', 'stroke-width': 2 }, svg);
+  el('path', { d: path(ks.map((r, k) => [xOf(r), yOf(fs1[k])])), fill: 'none', stroke: 'var(--faint)', 'stroke-width': 2, 'stroke-dasharray': '6 4' }, svg);
+  el('path', { d: path(ks.map(r => [xOf(r), yOf(finalSize(r, 1 - v))])), fill: 'none', stroke: 'var(--I)', 'stroke-width': 3.2 }, svg);
+  const herd = R0 > 1 ? 1 - 1 / R0 : 0, z = finalSize(R0, 1 - v);
+  if (R0 >= 1) {
+    el('line', { x1: xOf(R0), x2: xOf(R0), y1: T, y2: H - B, stroke: 'var(--muted)', 'stroke-opacity': .35 }, svg);
+    if (z > 0) el('line', { x1: xOf(R0), x2: xOf(R0), y1: yOf(herd), y2: yOf(v + z > 1 ? 1 : z), stroke: 'var(--I)', 'stroke-width': 6, 'stroke-opacity': .18 }, svg);
+    el('circle', { cx: xOf(R0), cy: yOf(herd), r: 5, fill: 'var(--cap)' }, svg);
+    const dot = el('circle', { cx: xOf(R0), cy: yOf(z), r: 9, fill: 'var(--I)', stroke: 'var(--card)', 'stroke-width': 3, class: 'drag' }, svg);
+    dot.addEventListener('pointerdown', e => {
+      dot.setPointerCapture(e.pointerId);
+      const r = svg.getBoundingClientRect();
+      const move = ev => { const x = (ev.clientX - r.left) * W / r.width; const R = Math.round((1 + (x - L) / (W - L - Rr) * 5) * 10) / 10; setR0(Math.max(1, Math.min(5, R))); };
+      dot.addEventListener('pointermove', move);
+      dot.addEventListener('pointerup', () => dot.removeEventListener('pointermove', move), { once: true });
+    });
+  }
+  $('ht').textContent = fmt(herd * 100, 1) + '%';
+  $('re').textContent = fmt(R0 * (1 - v), 2);
+  $('re').parentElement.className = 'stat ' + (R0 * (1 - v) < 1 ? 'R' : 'I');
+  $('fz4').textContent = fmt(z * 100, 1) + '%';
+  $('ie').textContent = fmt((v + z) * 100, 1) + '%';
+  $('over').innerHTML = z > 0 ? `<b>Overshoot:</b> ${fmt((v + z - herd) * 100, 1)} points past the threshold: infections that happen after the peak.` : '<b>Overshoot:</b> <span class="flag good">none: the outbreak never takes off</span>';
+  const both = simulate(R0, st.D, v, st.c, st.t0, st.len);
+  $('both').innerHTML = `<b>Everything together:</b> with v = ${Math.round(v * 100)}% and contacts cut ${Math.round(st.c * 100)}% from day ${st.t0}: peak ${fmt(peakOf(both).i * N * HOSP)} beds, ${fmt((both[DAYS].r - v) * 100, 1)}% infected by day 300.`;
+}
+
+// ---------- wiring ----------
+function render(parts) {
+  $('r0o').textContent = $('r0bo').textContent = $('r0co').textContent = st.R0.toFixed(1);
+  $('Do').textContent = st.D.toFixed(1); $('co').textContent = Math.round(st.c * 100) + '%';
+  $('t0o').textContent = st.t0; $('leno').textContent = st.len + ' days'; $('vo').textContent = Math.round(st.v * 100) + '%';
+  if (parts.includes('tree')) drawTree();
+  if (parts.includes('sir')) drawSIR();
+  if (parts.includes('beds')) drawBeds();
+  if (parts.includes('fs')) drawFS();
+}
+const ALL = ['tree', 'sir', 'beds', 'fs'];
+function setR0(R) { st.R0 = R; ['r0', 'r0b', 'r0c'].forEach(id => $(id).value = R); render(ALL); }
+['r0', 'r0b', 'r0c'].forEach(id => $(id).addEventListener('input', e => setR0(+e.target.value)));
+$('D').addEventListener('input', e => { st.D = +e.target.value; render(['sir', 'beds', 'fs']); });
+$('c').addEventListener('input', e => { st.c = e.target.value / 100; render(['beds', 'fs']); });
+$('t0').addEventListener('input', e => { st.t0 = +e.target.value; render(['beds', 'fs']); });
+$('len').addEventListener('input', e => { st.len = +e.target.value; render(['beds', 'fs']); });
+$('v').addEventListener('input', e => { st.v = e.target.value / 100; render(['fs']); });
+$('another').onclick = () => { st.seed++; render(['tree']); };
+$('back').onclick = () => { st.seed = 1; render(['tree']); };
+render(ALL);
+</script>
+</body>
+</html>

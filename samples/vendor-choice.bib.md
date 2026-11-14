@@ -1,17 +1,17 @@
 ---
 bib: 1
-title: Which supplier for the pilot run
+title: Which printer for the office
 data:
   vendors:
-    - { name: Northwind, price: 41000, lead: 6, quality: 8, service: 6, fit: 7 }
-    - { name: Contoso, price: 38500, lead: 10, quality: 9, service: 5, fit: 5 }
-    - { name: Fabrikam, price: 45250, lead: 4, quality: 6, service: 9, fit: 8 }
+    - { name: Northwind, price: 4100, lead: 6, quality: 8, service: 6, fit: 7 }
+    - { name: Contoso, price: 3850, lead: 10, quality: 9, service: 5, fit: 5 }
+    - { name: Fabrikam, price: 4525, lead: 4, quality: 6, service: 9, fit: 8 }
   steps: [Quote in hand, Demo booked, Reference call, Budget signed]
 effects: [respond, send]
 ---
-# Which supplier for the pilot run
+# Which printer for the office
 
-Three vendors are left. Move the weights to say what matters, and the
+Three suppliers are left. Move the weights to say what matters, and the
 scores follow. The prose around the blocks is ordinary Markdown.
 
 ```bib
@@ -54,6 +54,6 @@ if button("Choose", disabled: done.length < data.steps.length).clicked {
   respond(vendor: pick, score: score(data.vendors.find(v => v.name == pick)), urgent: urgent, note: note)
 }
 if button("Ask the team", style: ghost).clicked {
-  send("Which supplier? I lean to {pick}{urgent ? " (urgent)" : ""}. {note}")
+  send("Which printer? I lean to {pick}{urgent ? " (urgent)" : ""}. {note}")
 }
 ```

@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>To catch up, slow down</title>
+<style>
+  :root {
+    --bg: #f4efe4; --paper: #fbf8f1; --ink: #1d1b26; --muted: #6f6a7a; --faint: #d9d1c0; --grid: rgba(29,27,38,.08);
+    --earth: #2a6fdb; --mars: #c8432b; --sun: #e09a12; --craft: #1d1b26; --go: #2f8f5b; --warn: #c97a10; --path: #2a6fdb;
+    --planet: #3e9b6d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0e18; --paper: #13162426; --ink: #e9e6f2; --muted: #9a97ad; --faint: #2a2d40; --grid: rgba(233,230,242,.07);
+      --earth: #6aa6ff; --mars: #ff7a5c; --sun: #ffc04d; --craft: #ffffff; --go: #5fd39a; --warn: #ffb347; --path: #6aa6ff;
+      --planet: #4cc08a;
+    }
+    body { background-image: radial-gradient(circle at 20% 10%, rgba(106,166,255,.08), transparent 40%), radial-gradient(circle at 80% 60%, rgba(255,122,92,.06), transparent 45%); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background-color: var(--bg); color: var(--ink); font: 17px/1.6 Georgia, "Iowan Old Style", "Palatino Linotype", serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 56px 28px 96px; }
+  .kicker, .num, label, .stat .k, .legend, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .kicker { letter-spacing: .18em; text-transform: uppercase; font-size: 12px; color: var(--muted); }
+  h1 { font-size: clamp(40px, 7vw, 76px); line-height: 1; margin: 12px 0 22px; font-weight: 400; letter-spacing: -.02em; }
+  h1 em { color: var(--mars); font-style: italic; }
+  h2 { font-size: 32px; font-weight: 400; margin: 6px 0 12px; }
+  p { max-width: 680px; }
+  blockquote { margin: 26px 0; padding-left: 18px; border-left: 3px solid var(--sun); font-style: italic; color: var(--muted); max-width: 640px; }
+  section { margin-top: 76px; }
+  .sec-no { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--sun); letter-spacing: .2em; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: .88em; background: var(--grid); padding: 1px 6px; border-radius: 4px; }
+  .eq { font: 22px ui-monospace, Menlo, monospace; padding: 14px 18px; border: 1px dashed var(--faint); display: inline-block; border-radius: 10px; margin: 6px 0 14px; }
+  .panel { background: var(--paper); border: 1px solid var(--faint); border-radius: 16px; padding: 18px; margin: 18px 0; box-shadow: 0 1px 0 var(--grid); }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 28px; margin-bottom: 12px; }
+  label { display: block; font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+  label b { color: var(--ink); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--earth); margin: 6px 0 0; }
+  canvas { width: 100%; display: block; border-radius: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+  .stat { border-top: 1px solid var(--faint); padding-top: 8px; }
+  .stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .stat .v { font-size: 24px; }
+  .badge { display: inline-block; font: 13px ui-monospace, Menlo, monospace; padding: 4px 10px; border-radius: 99px; margin-top: 10px; }
+  .good { background: color-mix(in srgb, var(--go) 18%, transparent); color: var(--go); }
+  .bad { background: color-mix(in srgb, var(--mars) 18%, transparent); color: var(--mars); }
+  .meh { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--muted); }
+  .warnb { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  button { font: 13px ui-monospace, Menlo, monospace; border: 1px solid var(--faint); background: transparent; color: var(--ink); padding: 6px 14px; border-radius: 99px; cursor: pointer; }
+  button:hover { border-color: var(--ink); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  td, th { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--faint); }
+  th { font: 11px ui-monospace, Menlo, monospace; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 18px; font-size: 15px; margin-top: 12px; }
+  .kv span:nth-child(odd) { color: var(--muted); }
+  .wrap2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .wrap2 { grid-template-columns: 1fr; } }
+  ul.end li { margin: 8px 0; max-width: 680px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="kicker">Orbital mechanics, by hand</div>
+  <h1>To catch up, <em>slow down</em></h1>
+  <p>Two spacecraft share an orbit. The one behind wants to catch the one ahead. On a road you would press the accelerator. In orbit, that sends you <em>backwards</em>: the push lifts you into a higher, slower orbit and the gap grows. To catch up you brake.</p>
+  <p>This page builds that strange rule from one equation, then uses it to fly to Mars. Every number is computed live from the sliders; nothing is a picture.</p>
+  <blockquote>In orbit, speed and height are one thing. Change one and you have changed the other.</blockquote>
+
+  <!-- ONE -->
+  <section>
+    <div class="sec-no">ONE</div>
+    <h2>Newton's cannon</h2>
+    <p>Put a cannon on a tower 6,371 km above the ground, twice the planet's radius from its centre, and fire sideways. Too slow and the shot falls in. At one exact speed it falls <em>around</em> the planet forever: a circle. Faster still and the circle stretches into an ellipse, until at √2 times the circular speed it never comes back.</p>
+    <p>The orbit follows from just the position and the velocity at launch. With the sideways launch here the eccentricity is simply <code>e = |v²/v_c² − 1|</code>.</p>
+    <div class="panel">
+      <div class="controls">
+        <div><label>Launch speed <b id="vkL"></b> km/s · circular <span id="vcL"></span>, escape <span id="veL"></span></label><input id="vk" type="range" min="3.5" max="9" step="0.05" value="6.6"></div>
+        <div><label>Time flown <b id="fL"></b> of one orbit</label><input id="f" type="range" min="0" max="1" step="0.01" value="0.35">
+          <div class="row" style="margin-top:6px"><button id="fPlay">▶ fly</button></div></div>
+      </div>
+      <canvas id="c1" height="380"></canvas>
+      <div class="stats" id="s1"></div>
+    </div>
+    <p>The dot moves by <strong>time</strong>, not by angle: press fly and it lingers far out and whips round close in. The speed comes from one line, the <strong>vis-viva equation</strong>:</p>
+    <div class="eq">v² = GM (2/r − 1/a)</div>
+    <p>Here <code>r</code> is the distance from the planet's centre now and <code>a</code> the semi-major axis, half the long width of the ellipse. A circle is the case <code>r = a</code> at every point, so <code>v² = GM/r</code>. The curve below is that speed over one orbit.</p>
+    <div class="panel">
+      <canvas id="c1b" height="170"></canvas>
+      <div class="kv" id="kv1"></div>
+    </div>
+  </section>
+
+  <!-- TWO -->
+  <section>
+    <div class="sec-no">TWO</div>
+    <h2>Lower is faster</h2>
+    <p>For a circle, <code>v = √(GM/r)</code>: the closer in, the faster. And the period grows as <code>r^1.5</code> (Kepler's third law), so a low orbit is both faster <em>and</em> shorter. Four circular orbits of the same planet:</p>
+    <div class="panel"><table id="tbl"></table></div>
+    <p>Now the chase. Two craft fly a circular orbit 400 km up; the chaser is behind. It fires its engine once, along or against its motion. Fire <em>forward</em> and the extra speed lifts the far side of its orbit: a bigger ellipse, a longer period, and it falls further behind on every lap. Fire <em>backward</em> and it drops into a smaller, quicker ellipse and gains on every lap.</p>
+    <div class="panel">
+      <div class="controls">
+        <div><label>Engine burn <b id="dvL"></b> m/s (minus = brake)</label><input id="dv" type="range" min="-60" max="60" step="5" value="-20"></div>
+        <div><label>Chaser starts behind by <b id="g0L"></b>°</label><input id="g0" type="range" min="2" max="30" step="1" value="10"></div>
+        <div><label>Hours since the burn <b id="thL"></b></label><input id="th" type="range" min="0" max="24" step="0.1" value="4">
+          <div class="row" style="margin-top:6px"><button id="thPlay">▶ run the clock</button></div></div>
+      </div>
+      <canvas id="c2" height="340"></canvas>
+      <div class="stats" id="s2"></div>
+      <div id="b2"></div>
+    </div>
+    <p>Braking lowered the chaser's orbit, and the lower orbit is the faster one. To actually dock it would then burn <em>forward</em> to climb back up, once it has caught up.</p>
+  </section>
+
+  <!-- THREE -->
+  <section>
+    <div class="sec-no">THREE</div>
+    <h2>The Hohmann transfer to Mars</h2>
+    <p>The same trick, on the scale of the Sun. Earth circles at 1 AU, Mars at 1.524 AU. The cheapest two-burn route is an ellipse that just touches both orbits: leave Earth's orbit with a forward burn at the ellipse's closest point to the Sun, coast half an ellipse, and burn forward again at Mars to match its orbit. (These are speeds relative to each planet's orbit; escaping Earth's own gravity is a separate cost.)</p>
+    <div class="panel">
+      <div class="controls">
+        <div><label>Days since leaving Earth <b id="dayL"></b></label><input id="day" type="range" min="0" max="259" step="1" value="120">
+          <div class="row" style="margin-top:6px"><button id="dayPlay">▶ launch</button></div></div>
+      </div>
+      <canvas id="c3" height="420"></canvas>
+      <div class="stats" id="s3"></div>
+      <div class="kv" id="kv3"></div>
+    </div>
+    <p>Look at the arrival: the craft reaches Mars's orbit <em>slower</em> than Mars, because it has climbed uphill against the Sun the whole way. The second burn is Mars catching up and the craft speeding up to match.</p>
+  </section>
+
+  <!-- FOUR -->
+  <section>
+    <div class="sec-no">FOUR</div>
+    <h2>The launch window</h2>
+    <p>The transfer takes 259 days, and in that time Mars moves 136° round its orbit. So Mars must be <strong>44° ahead</strong> of Earth on launch day, or the craft arrives at an empty point in space. Earth laps Mars every 780 days (the synodic period), so the angle comes round again only then. Slide the launch date and watch the angle drift.</p>
+    <div class="panel">
+      <div class="controls">
+        <div><label>Launch day <b id="LL"></b> (days from today)</label><input id="L" type="range" min="0" max="1600" step="5" value="400"></div>
+      </div>
+      <canvas id="c4" height="230"></canvas>
+      <div class="wrap2" style="margin-top:14px">
+        <canvas id="c4b" height="260"></canvas>
+        <div><div class="stats" id="s4" style="grid-template-columns:1fr"></div><p class="mono" style="font-size:12px;color:var(--muted)" id="w4"></p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-no">WHAT YOU JUST SAW</div>
+    <h2>The one idea underneath</h2>
+    <ul class="end">
+      <li><strong>Position and velocity fix the orbit.</strong> One speed gives a circle, more an ellipse, √2 times as much an escape. The shot slows as it climbs and speeds up as it falls.</li>
+      <li><strong>Vis-viva</strong>, <code>v² = GM(2/r − 1/a)</code>, ties speed to height and to the orbit's size.</li>
+      <li><strong>Lower is faster</strong>, so a brake makes you gain and a push makes you lose. Rendezvous works backwards from intuition.</li>
+      <li><strong>Hohmann</strong>: two forward burns, 2.95 and 2.65 km/s, half an ellipse, 259 days, and a launch only when Mars is 44° ahead, which happens once every 780 days.</li>
+    </ul>
+  </section>
+</main>
+<script>
+const TAU = 2 * Math.PI, DEG = 180 / Math.PI;
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function kep(M, e) { let E = M + e * Math.sin(M); for (let k = 0; k < 4; k++) E -= (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E)); return E; }
+function trueAnom(E, e) { const b = e / (1 + Math.sqrt(1 - e * e)); return E + 2 * Math.atan2(b * Math.sin(E), 1 - b * Math.cos(E)); }
+function hm(h) { const hh = Math.floor(h), mm = Math.round((h - hh) * 60); return `${hh} h ${mm < 10 ? "0" : ""}${mm} min`; }
+const r1d = (x, d = 1) => (Math.round(x * 10 ** d) / 10 ** d).toFixed(d);
+function setup(c) {
+  const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = +c.getAttribute("height");
+  c.style.height = h + "px"; c.width = w * dpr; c.height = h * dpr;
+  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  g.fillStyle = css("--grid"); g.fillRect(0, 0, w, h);
+  return [g, w, h];
+}
+function dot(g, x, y, r, fill, stroke) { g.beginPath(); g.arc(x, y, r, 0, TAU); if (fill) { g.fillStyle = fill; g.fill(); } if (stroke) { g.strokeStyle = stroke; g.lineWidth = 1.5; g.stroke(); } }
+function ring(g, x, y, r, col, lw = 1, dash) { g.beginPath(); g.setLineDash(dash || []); g.arc(x, y, r, 0, TAU); g.strokeStyle = col; g.lineWidth = lw; g.stroke(); g.setLineDash([]); }
+function text(g, s, x, y, col, align = "left", size = 12) { g.font = `${size}px ui-monospace, Menlo, monospace`; g.fillStyle = col; g.textAlign = align; g.fillText(s, x, y); }
+function stats(el, items) { el.innerHTML = items.map(([k, v, col]) => `<div class="stat"><div class="k">${k}</div><div class="v" style="color:${col || "inherit"}">${v}</div></div>`).join(""); }
+function kv(el, items) { el.innerHTML = items.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join(""); }
+function player(btn, input, speed, label) {
+  let raf = null;
+  btn.onclick = () => {
+    if (raf) { cancelAnimationFrame(raf); raf = null; btn.textContent = "▶ " + label; return; }
+    btn.textContent = "❚❚ pause";
+    if (+input.value >= +input.max) input.value = input.min;
+    let last = performance.now();
+    const tick = now => {
+      const dt = (now - last) / 1000; last = now;
+      let v = +input.value + speed * dt;
+      if (v >= +input.max) { v = +input.max; input.value = v; input.dispatchEvent(new Event("input")); raf = null; btn.textContent = "▶ " + label; return; }
+      input.value = v; input.dispatchEvent(new Event("input"));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+  };
+}
+
+/* ---------- ONE ---------- */
+const MU = 398600, R0 = 12742, RP = 6371, VC = Math.sqrt(MU / R0), VE = VC * Math.SQRT2, T0 = TAU * Math.sqrt(R0 ** 3 / MU) / 3600;
+function one() {
+  const vk = +$("vk").value, f = +$("f").value;
+  $("vkL").textContent = vk.toFixed(2); $("fL").textContent = f.toFixed(2); $("vcL").textContent = VC.toFixed(2); $("veL").textContent = VE.toFixed(2);
+  const v = vk / VC, es = v * v - 1, e = Math.abs(es), bound = v * v < 1.9999, a = bound ? 1 / (2 - v * v) : 0;
+  const off = es < 0 ? Math.PI : 0, peri = es < 0 ? v * v / (1 + e) : 1, apo = bound ? (es < 0 ? 1 : v * v / (1 - e)) : Infinity;
+  const crash = peri < RP / R0, period = bound ? T0 * Math.pow(a, 1.5) : 0;
+  const at = ff => { const E = kep(off + TAU * ff, e); return { r: a * (1 - e * Math.cos(E)), t: trueAnom(E, e) - off }; };
+  const P = at(f), Q = at(f + 0.004), vf = bound ? VC * Math.sqrt(2 / P.r - 1 / a) : vk;
+  const [g, w, h] = setup($("c1"));
+  const cx = w * 0.6, cy = h / 2, S = h * 0.24;
+  const col = crash ? css("--mars") : bound ? css("--path") : css("--warn");
+  ring(g, cx, cy, S, css("--muted"), 1, [4, 5]);
+  g.beginPath(); let pen = false;
+  for (let i = 0; i <= 360; i++) {
+    const t = TAU * i / 360, d = 1 + es * Math.cos(t), r = d > 0.02 ? v * v / d : 99;
+    if (r < 40) { const x = cx + S * r * Math.cos(t), y = cy - S * r * Math.sin(t); pen ? g.lineTo(x, y) : g.moveTo(x, y); pen = true; } else pen = false;
+  }
+  g.strokeStyle = col; g.lineWidth = 2.5; g.stroke();
+  dot(g, cx, cy, S * RP / R0, css("--planet") + "55", css("--planet"));
+  text(g, "planet", cx, cy + 4, css("--ink"), "center");
+  g.beginPath(); g.moveTo(cx + S * RP / R0, cy); g.lineTo(cx + S, cy); g.strokeStyle = css("--muted"); g.lineWidth = 3; g.stroke();
+  dot(g, cx + S, cy, 4, css("--ink"));
+  if (bound && !crash) {
+    const px = cx + S * P.r * Math.cos(P.t), py = cy - S * P.r * Math.sin(P.t);
+    let dx = S * (Q.r * Math.cos(Q.t) - P.r * Math.cos(P.t)), dy = -S * (Q.r * Math.sin(Q.t) - P.r * Math.sin(P.t));
+    const dl = Math.hypot(dx, dy), L = 14 * vf;
+    g.beginPath(); g.moveTo(cx, cy); g.lineTo(px, py); g.strokeStyle = css("--faint"); g.lineWidth = 1; g.stroke();
+    g.beginPath(); g.moveTo(px, py); g.lineTo(px + dx / dl * L, py + dy / dl * L); g.strokeStyle = css("--warn"); g.lineWidth = 2.5; g.stroke();
+    dot(g, px + dx / dl * L, py + dy / dl * L, 3, css("--warn"));
+    dot(g, px, py, 7, css("--craft"));
+    text(g, `${vf.toFixed(2)} km/s`, px + 12, py - 12, css("--ink"));
+  }
+  text(g, crash ? "falls back in" : !bound ? "escapes: an open curve" : e < 0.01 ? "a circle" : `an ellipse, e = ${e.toFixed(2)}`, 16, 26, col, "left", 15);
+  text(g, "dashed: the circular orbit · arrow: velocity", 16, h - 14, css("--muted"), "left", 11);
+  stats($("s1"), [
+    ["Eccentricity", e.toFixed(3), !bound ? css("--warn") : ""],
+    ["Lowest point", crash ? "underground" : `${r1d((peri * R0 - RP) / 1000)}k km`, crash ? css("--mars") : ""],
+    ["Highest point", bound ? `${r1d((apo * R0 - RP) / 1000)}k km` : "never", bound ? "" : css("--warn")],
+    ["Period", bound ? hm(period) : "none"],
+  ]);
+  // speed curve
+  const [g2, w2, h2] = setup($("c1b"));
+  const yv = s => h2 - 24 - (h2 - 46) * s / 10;
+  for (let s = 0; s <= 10; s += 2) { g2.beginPath(); g2.moveTo(40, yv(s)); g2.lineTo(w2 - 10, yv(s)); g2.strokeStyle = css("--grid"); g2.lineWidth = 1; g2.stroke(); text(g2, s, 30, yv(s) + 4, css("--muted"), "right", 11); }
+  g2.beginPath(); g2.moveTo(40, yv(VC)); g2.lineTo(w2 - 10, yv(VC)); g2.strokeStyle = css("--path"); g2.setLineDash([4, 4]); g2.stroke(); g2.setLineDash([]);
+  text(g2, "circular speed", w2 - 12, yv(VC) - 6, css("--path"), "right", 11);
+  if (bound && !crash) {
+    g2.beginPath();
+    for (let i = 0; i <= 200; i++) { const p = at(i / 200), s = VC * Math.sqrt(2 / p.r - 1 / a), x = 40 + (w2 - 50) * i / 200; i ? g2.lineTo(x, yv(s)) : g2.moveTo(x, yv(s)); }
+    g2.strokeStyle = css("--warn"); g2.lineWidth = 2.5; g2.stroke();
+    dot(g2, 40 + (w2 - 50) * f, yv(vf), 6, css("--craft"));
+  } else text(g2, crash ? "the shot hits the ground before it completes an orbit" : "an open path has no period to plot", w2 / 2, h2 / 2, css("--muted"), "center", 13);
+  text(g2, "launch", 40, h2 - 6, css("--muted"), "left", 11); text(g2, "one full orbit later", w2 - 10, h2 - 6, css("--muted"), "right", 11);
+  text(g2, "km/s", 46, 12, css("--muted"), "left", 11);
+  kv($("kv1"), [
+    ["Distance from centre now", `${Math.round(P.r * R0)} km`],
+    ["Semi-major axis a", bound ? `${Math.round(a * R0)} km` : "infinite or negative: unbound"],
+    ["v² = GM (2/r − 1/a)", bound ? `${MU} × (2/${Math.round(P.r * R0)} − 1/${Math.round(a * R0)}) = ${(vf * vf).toFixed(2)} km²/s²` : "–"],
+    ["Speed", `${vf.toFixed(2)} km/s`],
+  ]);
+}
+["vk", "f"].forEach(id => $(id).addEventListener("input", one));
+player($("fPlay"), $("f"), 0.12, "fly");
+
+/* ---------- TWO ---------- */
+const circ = alt => { const r = alt + RP, v = Math.sqrt(MU / r); return { v, T: TAU * r / v / 3600 }; };
+$("tbl").innerHTML = "<tr><th>Circular orbit</th><th>Altitude</th><th>Speed</th><th>Once round</th></tr>" +
+  [["Low orbit", 400], ["Navigation satellites", 20200], ["Geostationary", 35786], ["The Moon's distance", 378029]].map(([n, alt]) => {
+    const c = circ(alt); return `<tr><td>${n}</td><td>${alt} km</td><td>${c.v.toFixed(2)} km/s</td><td>${c.T < 48 ? hm(c.T) : r1d(c.T / 24) + " days"}</td></tr>`;
+  }).join("");
+const r0 = RP + 400, v0 = Math.sqrt(MU / r0), Tt = TAU * Math.sqrt(r0 ** 3 / MU) / 3600;
+function two() {
+  const dv = +$("dv").value, gap0 = +$("g0").value, th = +$("th").value;
+  $("dvL").textContent = dv; $("g0L").textContent = gap0; $("thL").textContent = th.toFixed(1);
+  const v1 = v0 + dv / 1000, ac = 1 / (2 / r0 - v1 * v1 / MU), ec = Math.abs(r0 / ac - 1), offc = dv < 0 ? Math.PI : 0;
+  const Tc = TAU * Math.sqrt(ac ** 3 / MU) / 3600, gainRev = 360 * (1 - Tc / Tt);
+  const chaserAt = t => trueAnom(kep(offc + TAU * t / Tc, ec), ec) - offc;
+  const gapAt = t => gap0 + 360 * t / Tt - chaserAt(t) * DEG;
+  const [g, w, h] = setup($("c2"));
+  const cx = w * 0.3, cy = h / 2, R = h * 0.4, X = (r, t) => cx + R * (1 + (r - r0) / r0 * 10) * Math.cos(t), Y = (r, t) => cy - R * (1 + (r - r0) / r0 * 10) * Math.sin(t);
+  const cc = dv < 0 ? css("--path") : dv > 0 ? css("--warn") : css("--muted");
+  dot(g, cx, cy, R * RP / r0 * 0.6, css("--planet") + "44");
+  ring(g, cx, cy, R, css("--muted"), 1.5);
+  g.beginPath();
+  for (let i = 0; i <= 180; i++) { const E = TAU * i / 180, r = ac * (1 - ec * Math.cos(E)), t = trueAnom(E, ec) - offc; i ? g.lineTo(X(r, t), Y(r, t)) : g.moveTo(X(r, t), Y(r, t)); }
+  g.strokeStyle = cc; g.lineWidth = 2; g.stroke();
+  const tt = (gap0 + 360 * th / Tt) / DEG, Ec = kep(offc + TAU * th / Tc, ec), rc = ac * (1 - ec * Math.cos(Ec)), tc = trueAnom(Ec, ec) - offc;
+  dot(g, X(r0, tt), Y(r0, tt), 7, css("--craft")); text(g, "target", X(r0, tt) + 10, Y(r0, tt) - 8, css("--ink"));
+  dot(g, X(rc, tc), Y(rc, tc), 7, cc); text(g, "chaser", X(rc, tc) - 12, Y(rc, tc) + 18, cc, "right");
+  text(g, "height differences drawn 10× larger", 14, h - 12, css("--muted"), "left", 11);
+  const gx = w * 0.62, gw = w * 0.35, N = 240, gaps = Array.from({ length: N + 1 }, (_, i) => gapAt(24 * i / N));
+  const lo = Math.min(-30, ...gaps), hi = Math.max(gap0 + 5, ...gaps), gy = v => 30 + (h - 60) * (hi - v) / (hi - lo);
+  g.beginPath(); g.moveTo(gx, gy(0)); g.lineTo(gx + gw, gy(0)); g.strokeStyle = css("--faint"); g.lineWidth = 1; g.stroke();
+  text(g, "0°", gx - 6, gy(0) + 4, css("--muted"), "right", 11); text(g, gap0 + "°", gx - 6, gy(gap0) + 4, css("--muted"), "right", 11);
+  g.beginPath(); gaps.forEach((v, i) => i ? g.lineTo(gx + gw * i / N, gy(v)) : g.moveTo(gx, gy(v))); g.strokeStyle = cc; g.lineWidth = 2; g.stroke();
+  g.beginPath(); g.moveTo(gx + gw * th / 24, 20); g.lineTo(gx + gw * th / 24, h - 30); g.strokeStyle = css("--faint"); g.stroke();
+  const gapNow = gapAt(th);
+  dot(g, gx + gw * th / 24, gy(gapNow), 5, css("--craft"));
+  text(g, "how far behind the chaser is (degrees)", gx, 18, css("--muted"), "left", 11);
+  text(g, "0 h", gx, h - 12, css("--muted"), "left", 11); text(g, "24 h", gx + gw, h - 12, css("--muted"), "right", 11);
+  stats($("s2"), [
+    ["Chaser's period", `${r1d(Tc * 60)} min`, cc], ["Target's period", `${r1d(Tt * 60)} min`],
+    ["Gained per lap", `${gainRev.toFixed(2)}°`, gainRev > 0 ? css("--go") : gainRev < 0 ? css("--mars") : ""],
+    ["Gap now", `${r1d(gapNow)}°`, gapNow <= 0 ? css("--go") : ""],
+  ]);
+  $("b2").innerHTML = dv === 0 ? `<span class="badge meh">no burn: the gap never changes</span>`
+    : gainRev > 0 ? `<span class="badge good">braking: caught up after about ${hm(gap0 / gainRev * Tc)}, ${r1d(gap0 / gainRev)} laps</span>`
+    : `<span class="badge bad">speeding up made it slower: it loses ${(-gainRev).toFixed(2)}° every lap</span>`;
+}
+["dv", "g0", "th"].forEach(id => $(id).addEventListener("input", two));
+player($("thPlay"), $("th"), 2, "run the clock");
+
+/* ---------- THREE & FOUR ---------- */
+const MUS = 132712440018, AU = 149597871, r1 = 1, r2 = 1.524, at = (r1 + r2) / 2, et = (r2 - r1) / (r2 + r1);
+const vE = Math.sqrt(MUS / (r1 * AU)), vM = Math.sqrt(MUS / (r2 * AU));
+const dv1 = vE * (Math.sqrt(2 * r2 / (r1 + r2)) - 1), dv2 = vM * (1 - Math.sqrt(2 * r1 / (r1 + r2)));
+const YEAR = 365.25, TE = YEAR, TM = YEAR * Math.pow(r2, 1.5), ttr = YEAR / 2 * Math.pow(at, 1.5), lead = 180 - 360 * ttr / TM;
+function transfer(g, cx, cy, S, upto) {
+  g.beginPath();
+  for (let i = 0; i <= 120; i++) { const E = Math.PI * i / 120, r = at * (1 - et * Math.cos(E)), t = trueAnom(E, et); i ? g.lineTo(cx + S * r * Math.cos(t), cy - S * r * Math.sin(t)) : g.moveTo(cx + S * r * Math.cos(t), cy - S * r * Math.sin(t)); }
+  g.strokeStyle = css("--sun") + "66"; g.lineWidth = 1.5; g.setLineDash([5, 5]); g.stroke(); g.setLineDash([]);
+  g.beginPath();
+  for (let i = 0; i <= 120; i++) { const E = upto * i / 120, r = at * (1 - et * Math.cos(E)), t = trueAnom(E, et); i ? g.lineTo(cx + S * r * Math.cos(t), cy - S * r * Math.sin(t)) : g.moveTo(cx + S * r * Math.cos(t), cy - S * r * Math.sin(t)); }
+  g.strokeStyle = css("--sun"); g.lineWidth = 3; g.stroke();
+}
+function three() {
+  const day = +$("day").value; $("dayL").textContent = Math.round(day);
+  const td = Math.min(day, ttr), Et = kep(Math.PI * td / ttr, et), rt = at * (1 - et * Math.cos(Et)), nut = trueAnom(Et, et);
+  const thE = TAU * day / TE, thM = lead / DEG + TAU * day / TM;
+  const [g, w, h] = setup($("c3"));
+  const cx = w / 2, cy = h / 2, S = (h / 2 - 26) / r2, X = (r, t) => cx + S * r * Math.cos(t), Y = (r, t) => cy - S * r * Math.sin(t);
+  ring(g, cx, cy, S * r1, css("--earth") + "77", 1.5); ring(g, cx, cy, S * r2, css("--mars") + "77", 1.5);
+  transfer(g, cx, cy, S, Et);
+  dot(g, cx, cy, 13, css("--sun")); text(g, "Sun", cx, cy + 30, css("--muted"), "center");
+  g.beginPath(); g.moveTo(cx, cy); g.lineTo(X(r2, lead / DEG), Y(r2, lead / DEG)); g.moveTo(cx, cy); g.lineTo(X(r2, 0), Y(r2, 0)); g.strokeStyle = css("--faint"); g.lineWidth = 1; g.stroke();
+  g.beginPath(); g.arc(cx, cy, S * 0.45, -lead / DEG, 0); g.strokeStyle = css("--muted"); g.stroke();
+  text(g, `${lead.toFixed(1)}°`, X(0.6, lead / 2 / DEG), Y(0.6, lead / 2 / DEG), css("--muted"), "center");
+  dot(g, X(r2, lead / DEG), Y(r2, lead / DEG), 4, null, css("--mars"));
+  dot(g, X(r1, thE), Y(r1, thE), 8, css("--earth")); text(g, "Earth", X(r1, thE) + 12, Y(r1, thE) + 4, css("--earth"));
+  dot(g, X(r2, thM), Y(r2, thM), 7, css("--mars")); text(g, "Mars", X(r2, thM) + 12, Y(r2, thM) + 4, css("--mars"));
+  dot(g, X(rt, nut), Y(rt, nut), 5, css("--craft")); text(g, "craft", X(rt, nut) - 10, Y(rt, nut) - 10, css("--ink"), "right");
+  text(g, `day ${Math.round(day)} of ${Math.round(ttr)}`, 16, 26, css("--ink"), "left", 15);
+  text(g, "open circle: where Mars was at launch", 16, h - 14, css("--muted"), "left", 11);
+  stats($("s3"), [
+    ["Burn 1, at Earth", `${dv1.toFixed(2)} km/s`, css("--earth")], ["Burn 2, at Mars", `${dv2.toFixed(2)} km/s`, css("--mars")],
+    ["Total", `${(dv1 + dv2).toFixed(2)} km/s`], ["Transfer time", `${Math.round(ttr)} days`], ["Mars ahead at launch", `${lead.toFixed(1)}°`],
+  ]);
+  kv($("kv3"), [
+    ["Transfer ellipse", `a = ${at.toFixed(3)} AU, e = ${et.toFixed(3)}`],
+    ["Earth's orbital speed", `${vE.toFixed(2)} km/s; at perihelion of the transfer ${(vE + dv1).toFixed(2)} km/s`],
+    ["Craft's distance from the Sun now", `${rt.toFixed(3)} AU, moving ${Math.sqrt(MUS / AU * (2 / rt - 1 / at)).toFixed(2)} km/s`],
+    ["Mars's orbital speed", `${vM.toFixed(2)} km/s; craft arrives at ${(vM - dv2).toFixed(2)} km/s, so it is overtaken`],
+  ]);
+}
+$("day").addEventListener("input", three);
+player($("dayPlay"), $("day"), 40, "launch");
+
+const phi0 = 120, rate = 360 / TM - 360 / TE, wrap = x => ((x % 360) + 360) % 360, phaseAt = d => wrap(phi0 + rate * d);
+const synodic = 360 / -rate, first = wrap(phi0 - lead) / -rate, windows = [0, 1, 2].map(k => first + k * synodic);
+function four() {
+  const L = +$("L").value; $("LL").textContent = L;
+  const ph = phaseAt(L), miss = ((ph - lead + 540) % 360) - 180, next = windows.find(d => d >= L - 2.5);
+  const [g, w, h] = setup($("c4"));
+  const x = d => 44 + (w - 60) * d / 1600, y = p => 16 + (h - 44) * (1 - p / 360);
+  for (const p of [0, 90, 180, 270, 360]) { g.beginPath(); g.moveTo(44, y(p)); g.lineTo(w - 16, y(p)); g.strokeStyle = css("--grid"); g.lineWidth = 1; g.stroke(); text(g, p + "°", 36, y(p) + 4, css("--muted"), "right", 11); }
+  for (const d of windows) if (d <= 1600) { g.fillStyle = css("--go") + "33"; g.fillRect(x(d) - 3, 16, 6, h - 44); }
+  g.beginPath(); g.moveTo(44, y(lead)); g.lineTo(w - 16, y(lead)); g.strokeStyle = css("--go"); g.lineWidth = 1.5; g.stroke();
+  text(g, "44° ahead: go", w - 18, y(lead) - 6, css("--go"), "right", 11);
+  g.beginPath(); let prev = null;
+  for (let i = 0; i <= 400; i++) { const d = 1600 * i / 400, p = phaseAt(d); if (prev === null || Math.abs(p - prev) > 180) g.moveTo(x(d), y(p)); else g.lineTo(x(d), y(p)); prev = p; }
+  g.strokeStyle = css("--mars"); g.lineWidth = 2.5; g.stroke();
+  g.beginPath(); g.moveTo(x(L), 16); g.lineTo(x(L), h - 28); g.strokeStyle = css("--faint"); g.lineWidth = 1; g.stroke();
+  dot(g, x(L), y(ph), 6, css("--craft"));
+  text(g, "today", 44, h - 8, css("--muted"), "left", 11); text(g, "day 1600", w - 16, h - 8, css("--muted"), "right", 11);
+  text(g, "how far Mars is ahead of Earth", 50, 30, css("--muted"), "left", 11);
+  const [g2, w2, h2] = setup($("c4b"));
+  const cx = w2 / 2, cy = h2 / 2, S = (h2 / 2 - 20) / r2, X = (r, t) => cx + S * r * Math.cos(t), Y = (r, t) => cy - S * r * Math.sin(t);
+  ring(g2, cx, cy, S * r1, css("--earth") + "66"); ring(g2, cx, cy, S * r2, css("--mars") + "66");
+  transfer(g2, cx, cy, S, Math.PI);
+  dot(g2, cx, cy, 9, css("--sun")); dot(g2, X(r1, 0), Y(r1, 0), 6, css("--earth"));
+  dot(g2, X(r2, ph / DEG), Y(r2, ph / DEG), 5, null, css("--mars"));
+  dot(g2, X(r2, Math.PI), Y(r2, Math.PI), 6, null, css("--ink"));
+  const am = (ph + 360 * ttr / TM) / DEG;
+  dot(g2, X(r2, am), Y(r2, am), 7, css("--mars"));
+  text(g2, "Mars on arrival", X(r2, am) + 10, Y(r2, am) - 8, css("--mars"), "left", 11);
+  text(g2, "craft arrives here", X(r2, Math.PI) + 10, Y(r2, Math.PI) + 18, css("--ink"), "left", 11);
+  const ok = Math.abs(miss) < 3;
+  stats($("s4"), [
+    ["Mars ahead at launch", `${Math.round(ph)}°`],
+    ["Miss on arrival", ok ? "on target" : `${Math.round(Math.abs(miss))}° ${miss > 0 ? "ahead" : "behind"}`, ok ? css("--go") : Math.abs(miss) < 15 ? css("--warn") : css("--mars")],
+    ["Next window", next == null ? "after day 1600" : `day ${Math.round(next)}`, ok ? css("--go") : ""],
+  ]);
+  $("w4").textContent = `Windows open every ${Math.round(synodic)} days: on day ${windows.map(Math.round).join(", day ")}.`;
+}
+$("L").addEventListener("input", four);
+function all() { one(); two(); three(); four(); }
+all();
+addEventListener("resize", all);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", all);
+</script>
+</body>
+</html>

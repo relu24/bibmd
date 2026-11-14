@@ -1,10 +1,11 @@
 // Checks a built web/dist in headless Chromium: serves it, opens the page with no document
 // (the sourdough notebook) and with ?doc= naming the other sample, and checks that each
 // starts, draws on its canvas and says nothing on the console's error stream, and that Ctrl+T
-// changes the theme (the frame differs); that a key, an IME's composition and a phone keyboard's text
-// type into an open block, the keyboard asked for only while it is open, the IME's place at its caret and
+// changes the theme (the frame differs); that a finger dragged up scrolls the page; that a key, an IME's composition and a phone keyboard's text
+// type into an open block (a finger's tap opens one), the keyboard asked for only while it is open, the IME's place at its caret and
 // its composition drawn in the block before it is committed; that a JPEG and a PNG beside a document draw (test/fixture,
-// served at /test/) and its link to Markdown opens in place; and that a missing document says so.
+// served at /test/) and its link to Markdown opens in place when tapped; that emoji draw in colour; and that a
+// missing document says so; and that the page's bar and menus drive it (Ctrl+B, /, Read).
 //
 //   node web/test/check.mjs [dist] [--shots DIR]
 //
@@ -27,7 +28,7 @@ const chrome = [process.env.CHROME, 'chromium', 'chromium-browser', 'google-chro
 if (!chrome) { console.log('SKIP: no Chromium (set CHROME)'); process.exit(0); }
 
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json',
-  '.md': 'text/markdown', '.png': 'image/png', '.jpg': 'image/jpeg', '.dat': 'application/octet-stream' };
+  '.md': 'text/markdown', '.png': 'image/png', '.jpg': 'image/jpeg', '.dat': 'application/octet-stream', '.ttf': 'font/ttf' };
 const server = createServer(async (req, res) => {
   let path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   if (path.endsWith('/')) path += 'index.html';
@@ -113,7 +114,7 @@ async function page(query, name, then) {
   const themed = await frame();
   check(themed.sum !== first.sum, `${name}: Ctrl+T changes the theme`);
   await shoot(`${name}-t`);
-  if (then) await then({ evaluate, sessionId, shoot });
+  if (then) await then({ evaluate, sessionId, shoot, frame, key });
   check(errors.length === 0, `${name}: no errors on the console` + (errors.length ? ':\n  ' + errors.join('\n  ') : ''));
   await send('Target.closeTarget', { targetId });
 }
@@ -132,7 +133,19 @@ async function missing() {
 }
 
 try {
-  await page('', 'default');
+  await page('', 'default', async ({ sessionId, shoot, frame }) => {
+    // A finger dragged up the page, as on a phone: the page scrolls with it, and flings on.
+    await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 }, sessionId);
+    const before = await frame();
+    const touch = (type, y) => send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: 550, y }] }, sessionId);
+    await touch('touchStart', 650);
+    for (let y = 630; y >= 250; y -= 20) { await touch('touchMove', y); await sleep(16); }
+    await touch('touchEnd');
+    await sleep(1500);
+    const scrolled = await frame();
+    check(scrolled.sum !== before.sum, 'default: a finger dragged up scrolls the page');
+    await shoot('default-touch');
+  });
   await page('?doc=samples/vendor-choice.bib.md', 'vendor-choice');
   await page('?doc=test/doc.md', 'images', async ({ evaluate, sessionId }) => {
     // The images' rows: the JPEG's red and the PNG's green, where the column draws them.
@@ -141,11 +154,52 @@ try {
     const [jpeg, png] = [await at(150), await at(320)];
     check(jpeg[0] > 150 && jpeg[2] < 150, `images: the JPEG draws (${jpeg})`);
     check(png[1] > 150 && png[0] < 150, `images: the PNG draws (${png})`);
-    for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
-      await send('Input.dispatchMouseEvent', { type, x: 215, y: 485, button: 'left', clickCount: 1 }, sessionId);
+    // Tapped with a finger, as on a phone (in the page: the canvas is under the page's 48 px bar).
+    await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 }, sessionId);
+    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 215, y: 497 }] }, sessionId);
+    await sleep(60);
+    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }, sessionId);
     await sleep(1500);
-    check(/supplier/.test(await evaluate('document.title')) && /vendor-choice/.test(await evaluate('location.search')),
-      `images: the link opens in place (${await evaluate('location.search')})`);
+    check(/printer/.test(await evaluate('document.title')) && /vendor-choice/.test(await evaluate('location.search')),
+      `images: the link opens in place when tapped (${await evaluate('location.search')})`);
+  });
+  // The page around the canvas: Ctrl+B in the canvas opens the page's contents, / its insert menu (its field takes
+  // the typing, Enter puts the block in), and the bar's Read locks the document.
+  await page('?edit&doc=test/typing.md', 'chrome', async ({ evaluate, sessionId, key, shoot }) => {
+    await evaluate(`document.getElementById('bibmd').focus()`);
+    await key('b', 'KeyB', '', 2);
+    await sleep(400);
+    const contents = await evaluate(`document.body.classList.contains('panel') && [...document.querySelectorAll('#panel-list .row')].map(r => r.textContent).join('|')`);
+    check(contents === 'Typing', `chrome: Ctrl+B opens the page's contents (${contents})`);
+    await shoot('chrome-contents');
+    await evaluate(`document.getElementById('bibmd').focus()`);
+    await key('/', 'Slash', '/');
+    await sleep(400);
+    check(await evaluate(`document.getElementById('palette').classList.contains('on') && document.activeElement.id`) === 'pal-q',
+      'chrome: / opens the insert menu, its field focused');
+    await send('Input.insertText', { text: 'table 3x2' }, sessionId);
+    await sleep(200);
+    const first = await evaluate(`document.querySelector('#pal-list .opt')?.textContent`);
+    check(first === 'Table 3 × 2| |', `chrome: the menu follows what is typed (${first})`);
+    await shoot('chrome-insert');
+    await key('Enter', 'Enter', '\r');
+    await sleep(500);
+    await key('Escape', 'Escape');
+    await sleep(500);
+    const rows = (await evaluate('bibmd.text()')).split('\n').filter(l => l.startsWith('|') && l.split('|').length === 5).length;
+    check(rows === 3 && !(await evaluate(`document.getElementById('palette').classList.contains('on')`)),
+      `chrome: Enter puts a 3 × 2 table in, and the menu closes (${rows} rows)`);
+    await evaluate(`document.getElementById('t-read').click()`);
+    await sleep(400);
+    check(await evaluate(`bibmd.state().locked && document.body.classList.contains('locked')`), 'chrome: Read locks the document');
+  });
+  await page('?doc=test/emoji.md', 'emoji', async ({ evaluate }) => {
+    // The theme is grey, so a pixel of colour is an emoji's: without the emoji face they are missing glyphs.
+    const colour = await evaluate(`(() => { const c = document.getElementById('bibmd'), x = new OffscreenCanvas(c.width, c.height).getContext('2d');
+      x.drawImage(c, 0, 0); const d = x.getImageData(0, 0, c.width, c.height).data;
+      let n = 0; for (let i = 0; i < d.length; i += 4) if (Math.max(d[i], d[i+1], d[i+2]) - Math.min(d[i], d[i+1], d[i+2]) > 80) n++;
+      return n; })()`);
+    check(colour > 500, `emoji: draw in colour (${colour} px)`);
   });
   await page('?edit&doc=test/typing.md', 'typing', async ({ evaluate, sessionId, shoot }) => {
     // What Ctrl+S would download: the document as it is now.
@@ -167,6 +221,18 @@ try {
       let n = 0; for (let i = 0; i < px.length; i += 4) if (Math.abs(px[i] - px[0]) > 40) n++; return n; })()`);
     const closed = await sink();
     check(closed.mode === 'none', `typing: no phone keyboard before a block opens (inputmode ${closed.mode})`);
+    // A finger's tap, whose press and release come in one frame: it opens the block too, and Escape puts it back.
+    await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 }, sessionId);
+    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [CLICK] }, sessionId);
+    await sleep(60);
+    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }, sessionId);
+    await sleep(500);
+    const tapped = await sink();
+    check(tapped.mode === 'text', `typing: a finger's tap opens the block (inputmode ${tapped.mode})`);
+    await send('Emulation.setTouchEmulationEnabled', { enabled: false }, sessionId);
+    for (const type of ['rawKeyDown', 'keyUp'])
+      await send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }, sessionId);
+    await sleep(400);
     // A press and its release a few frames apart, as a hand's are: the block opens for editing.
     for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
       await send('Input.dispatchMouseEvent', { type, x: CLICK.x, y: CLICK.y, button: 'left', clickCount: 1 }, sessionId);

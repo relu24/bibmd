@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chance and choice in evolution</title>
+<style>
+  :root {
+    --bg: #f3f0e6; --paper: #fbfaf4; --ink: #1f2a22; --muted: #66705f; --faint: #d8d6c6; --grid: rgba(31,42,34,.08);
+    --AA: #2d6a8f; --Aa: #c98a12; --aa: #b8432f; --sel: #2d6a8f; --go: #3d8a4f; --warn: #c98a12;
+    --r0: #2d6a8f; --r1: #c98a12; --r2: #b8432f; --r3: #3d8a4f; --r4: #7a5cc2; --r5: #23928a; --r6: #b9497f; --r7: #6b6b6b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101511; --paper: #161d17; --ink: #e6ecdf; --muted: #95a08d; --faint: #2b352c; --grid: rgba(230,236,223,.07);
+      --AA: #6fb3dc; --Aa: #f0b545; --aa: #f07a62; --sel: #6fb3dc; --go: #77cf8a; --warn: #f0b545;
+      --r0: #6fb3dc; --r1: #f0b545; --r2: #f07a62; --r3: #77cf8a; --r4: #b39cff; --r5: #4fd1c5; --r6: #f08cbf; --r7: #b0b0b0;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.62 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; }
+  body::before { content: ""; position: fixed; inset: 0; pointer-events: none; background-image: linear-gradient(var(--grid) 1px, transparent 1px); background-size: 100% 28px; opacity: .5; }
+  main { position: relative; max-width: 980px; margin: 0 auto; padding: 56px 28px 96px; }
+  .mono, .kicker, label, .stat .k, th, .badge, button, .sec-no, .note { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .kicker { font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-size: clamp(40px, 7vw, 72px); font-weight: 400; line-height: 1.02; margin: 12px 0 22px; letter-spacing: -.015em; }
+  h1 .c1 { color: var(--aa); font-style: italic; } h1 .c2 { color: var(--AA); font-style: italic; }
+  h2 { font-size: 31px; font-weight: 400; margin: 6px 0 12px; }
+  p, ul { max-width: 690px; }
+  blockquote { margin: 26px 0; padding: 4px 0 4px 18px; border-left: 3px solid var(--go); font-style: italic; color: var(--muted); max-width: 640px; }
+  section { margin-top: 76px; }
+  .sec-no { font-size: 12px; letter-spacing: .2em; color: var(--go); }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: .86em; background: var(--grid); padding: 1px 6px; border-radius: 4px; }
+  .eq { font: 19px ui-monospace, Menlo, monospace; padding: 12px 16px; border: 1px dashed var(--faint); display: inline-block; border-radius: 10px; margin: 4px 0 12px; background: var(--paper); }
+  .panel { background: var(--paper); border: 1px solid var(--faint); border-radius: 16px; padding: 18px; margin: 18px 0; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 28px; margin-bottom: 14px; }
+  label { display: block; font-size: 12px; color: var(--muted); }
+  label b { color: var(--ink); }
+  input[type=range] { width: 100%; accent-color: var(--go); margin: 6px 0 0; }
+  canvas { width: 100%; display: block; border-radius: 12px; }
+  .two { display: grid; grid-template-columns: 290px 1fr; gap: 16px; }
+  @media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+  .stat { border-top: 1px solid var(--faint); padding-top: 8px; }
+  .stat .k { font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+  .stat .v { font-size: 25px; } .stat .u { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); }
+  .badge { display: inline-block; font-size: 13px; padding: 4px 10px; border-radius: 99px; margin-top: 10px; }
+  .good { background: color-mix(in srgb, var(--go) 18%, transparent); color: var(--go); }
+  .warnb { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+  .selb { background: color-mix(in srgb, var(--sel) 18%, transparent); color: var(--sel); }
+  .bad { background: color-mix(in srgb, var(--aa) 18%, transparent); color: var(--aa); }
+  .meh { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--muted); }
+  button { font-size: 12px; border: 1px solid var(--faint); background: transparent; color: var(--ink); padding: 5px 12px; border-radius: 99px; cursor: pointer; }
+  button:hover, button.on { border-color: var(--ink); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; font: 12px ui-monospace, Menlo, monospace; color: var(--muted); margin-top: 10px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 5px; margin-right: 6px; vertical-align: -1px; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 10px; max-width: none; }
+  ul.end li { margin: 8px 0; }
+</style>
+</head>
+<body>
+<main>
+  <div class="kicker">Population genetics, by hand</div>
+  <h1><span class="c1">Chance</span> and <span class="c2">choice</span> in evolution</h1>
+  <p>A new mutation appears in one individual. It makes its carriers a little better at surviving: one percent more offspring, say. Will it spread through the species?</p>
+  <p>Usually, no. Most beneficial mutations vanish within a few generations, lost by plain bad luck before selection ever gets a grip. Evolution is a contest between <strong>choice</strong> (natural selection, which is systematic) and <strong>chance</strong> (genetic drift, which is not). This page builds both from the simplest possible model: one gene, two versions of it, <strong>A</strong> and <strong>a</strong>.</p>
+  <blockquote>Selection is a nudge. Drift is a coin toss. Which wins depends on the size of the nudge and the size of the population.</blockquote>
+
+  <section>
+    <div class="sec-no">ONE</div>
+    <h2>No change without a cause: Hardy–Weinberg</h2>
+    <p>Every individual carries two copies of the gene, one from each parent. If a fraction <code>p</code> of all copies in the population are <strong>A</strong> and <code>q = 1 − p</code> are <strong>a</strong>, and mates pair up at random, then an offspring draws its two copies independently: <strong>AA</strong> with chance <code>p²</code>, <strong>Aa</strong> with <code>2pq</code> (A from mother and a from father, or the other way round) and <strong>aa</strong> with <code>q²</code>. Those three always add up to <code>(p + q)² = 1</code>.</p>
+    <p>The surprise is what happens next: nothing. The offspring pass on A at the same rate <code>p</code>, so the next generation has the same proportions, and the next. Without selection, drift, migration or mutation, allele frequencies stay put forever.</p>
+    <div class="panel">
+      <div class="controls"><div><label>p, the share of A copies <b id="pL"></b></label><input id="p" type="range" min="0" max="1" step="0.01" value="0.7"></div></div>
+      <div class="two"><canvas id="c1a" height="280"></canvas><canvas id="c1b" height="280"></canvas></div>
+      <div class="legend"><span><i style="background:var(--AA)"></i>AA: two A copies</span><span><i style="background:var(--Aa)"></i>Aa: one of each</span><span><i style="background:var(--aa)"></i>aa: two a copies</span><span>left: 100 individuals, two dots each · right: each genotype's share as p runs 0 → 1 (drag on it)</span></div>
+      <div class="stats" id="s1"></div>
+      <p class="note" id="n1"></p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-no">TWO</div>
+    <h2>Choice: natural selection</h2>
+    <p>Now let the genotypes differ in <strong>fitness</strong>: the average number of offspring an individual leaves, relative to the others. After selection, the share of A copies becomes</p>
+    <div class="eq">p′ = (p²·w_AA + pq·w_Aa) / W,  W = p²·w_AA + 2pq·w_Aa + q²·w_aa</div>
+    <p>That is all of it: one line, applied generation after generation. Small differences in fitness compound like interest.</p>
+    <div class="panel">
+      <div class="row" id="presets" style="margin-bottom:12px"></div>
+      <div class="controls">
+        <div><label>w(AA) <b id="wAAL"></b></label><input id="wAA" type="range" min="0.5" max="1.2" step="0.01" value="1.05"></div>
+        <div><label>w(Aa) <b id="wAaL"></b></label><input id="wAa" type="range" min="0.5" max="1.2" step="0.005" value="1.025"></div>
+        <div><label>w(aa) <b id="waaL"></b></label><input id="waa" type="range" min="0.5" max="1.2" step="0.01" value="1"></div>
+        <div><label>Starting share of A <b id="p0L"></b></label><input id="p0" type="range" min="0.01" max="0.99" step="0.01" value="0.05"></div>
+      </div>
+      <canvas id="c2" height="260"></canvas>
+      <div class="legend"><span><i style="background:var(--sel)"></i>share of A, generation 0 → 200</span><span id="l2"></span></div>
+      <div class="stats" id="s2"></div>
+      <div id="b2"></div>
+    </div>
+    <p>Try <em>A is recessive and helps</em>: the same 5% advantage as the dominant case, but while A is rare it hides in heterozygotes, where it does nothing, so the curve crawls for a hundred generations before it takes off. Try <em>heterozygote advantage</em>: neither allele wins, and the population settles where <code>p* = (w_Aa − w_aa) / (2w_Aa − w_AA − w_aa)</code>.</p>
+  </section>
+
+  <section>
+    <div class="sec-no">THREE</div>
+    <h2>Chance: genetic drift</h2>
+    <p>Selection treated the population as infinite. Real populations are finite: each generation is a <em>sample</em> of <code>2N</code> gene copies drawn from the last, and samples wobble. Here are eight populations, all starting at 50% A, with <strong>no selection at all</strong>. Each generation draws its <code>2N</code> copies at random (the Wright–Fisher model).</p>
+    <div class="panel">
+      <div class="controls">
+        <div><label>N, individuals <b id="NL"></b></label><input id="N" type="range" min="5" max="500" step="5" value="50"></div>
+        <div><label>Random seed <b id="seedL"></b></label><input id="seed" type="range" min="1" max="60" step="1" value="7"></div>
+        <div><label>Generations shown <b id="genL"></b></label><input id="gen" type="range" min="0" max="100" step="1" value="100">
+          <div class="row" style="margin-top:6px"><button id="play3">▶ replay</button><button id="reroll">new seed</button></div></div>
+      </div>
+      <canvas id="c3" height="280"></canvas>
+      <div class="legend"><span>share of A in eight populations, generation 0 → 100 · gridlines at 0, 25, 50, 75, 100%</span></div>
+      <div class="stats" id="s3"></div>
+      <p class="note">Each generation's binomial draw of 2N copies is approximated by a normal draw (Box–Muller from a seeded Park–Miller generator) with the binomial's mean and variance, clamped to 0 and 2N; a count that reaches 0 or 2N stays there. The same generator and seeds as the bib version of this page, so the same lines.</p>
+    </div>
+    <p>With five individuals, most lines hit 0% or 100% within a few dozen generations: one allele is gone for good, by chance alone. With five hundred they barely leave the middle. Drift eats variation at a rate of <code>1/(2N)</code> per generation, so its strength is set by population size.</p>
+  </section>
+
+  <section>
+    <div class="sec-no">FOUR</div>
+    <h2>The race: selection against drift</h2>
+    <p>Back to the new mutation. It starts as a single copy, frequency <code>1/(2N)</code>. A neutral mutation fixes with exactly that chance: every copy in the population is equally likely to become the ancestor of all future copies. A beneficial one with advantage <code>s</code> fixes with the chance worked out by Motoo Kimura,</p>
+    <div class="eq">u = (1 − e^(−2s)) / (1 − e^(−4Ns))</div>
+    <p>which is about <strong>2s</strong> once <code>4Ns</code> is well above 1, regardless of N. A 1% advantage gives a 2% chance: the mutation is lost 98 times in 100. When <code>4Ns</code> is below 1, <code>u</code> is about <code>1/(2N)</code>: selection is invisible and the mutation behaves as if neutral.</p>
+    <div class="panel">
+      <div class="controls">
+        <div><label>s, the advantage <b id="sL"></b>%</label><input id="s" type="range" min="0.1" max="10" step="0.1" value="1"></div>
+        <div><label>Population size N <b id="lgL"></b> (log scale)</label><input id="lg" type="range" min="1" max="4" step="0.05" value="2"></div>
+      </div>
+      <canvas id="c4" height="260"></canvas>
+      <div class="legend"><span><i style="background:var(--sel)"></i>chance a single beneficial copy fixes</span><span><i style="background:var(--muted)"></i>a neutral copy: 1/2N</span><span><i style="background:var(--go)"></i>2s</span></div>
+      <div class="stats" id="s4"></div>
+      <div id="b4"></div>
+      <p class="note" id="n4"></p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-no">WHAT YOU JUST SAW</div>
+    <h2>Chance and choice</h2>
+    <ul class="end">
+      <li><strong>Hardy–Weinberg:</strong> random mating turns allele shares into genotype shares <code>p²</code>, <code>2pq</code>, <code>q²</code>, and on its own changes nothing.</li>
+      <li><strong>Selection</strong> is deterministic: one line, <code>p′ = (p²w_AA + pqw_Aa)/W</code>, repeated. Dominance decides how fast; heterozygote advantage keeps both alleles.</li>
+      <li><strong>Drift</strong> is sampling error, of size <code>1/(2N)</code> per generation. Small populations lose variation fast, whatever its worth.</li>
+      <li><strong>The race:</strong> a beneficial mutation fixes with chance about <code>2s</code>, a neutral one with <code>1/(2N)</code>. Selection can only steer what drift lets survive, and only when <code>4Ns</code> is well above 1.</li>
+    </ul>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const pct = (x, d = 1) => `${(Math.round(x * 100 * 10 ** d) / 10 ** d)}%`;
+function setup(c) {
+  const dpr = devicePixelRatio || 1, w = c.clientWidth, h = +c.getAttribute("height");
+  c.style.height = h + "px"; c.width = w * dpr; c.height = h * dpr;
+  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = css("--grid"); g.fillRect(0, 0, w, h); return [g, w, h];
+}
+const seg = (g, x1, y1, x2, y2, col, lw = 1) => { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.strokeStyle = col; g.lineWidth = lw; g.stroke(); };
+const dot = (g, x, y, r, col) => { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = col; g.fill(); };
+const txt = (g, s, x, y, col, al = "left", sz = 11) => { g.font = `${sz}px ui-monospace, Menlo, monospace`; g.fillStyle = col; g.textAlign = al; g.fillText(s, x, y); };
+const stats = (el, it) => el.innerHTML = it.map(([k, v, col, u]) => `<div class="stat"><div class="k">${k}</div><div class="v" style="color:${col || "inherit"}">${v}${u ? ` <span class="u">${u}</span>` : ""}</div></div>`).join("");
+function poly(g, pts, col, lw) { g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.strokeStyle = col; g.lineWidth = lw; g.lineJoin = "round"; g.stroke(); }
+
+/* ONE */
+function one() {
+  const p = +$("p").value, q = 1 - p; $("pL").textContent = p.toFixed(2);
+  const nAA = Math.round(100 * p * p), naa = Math.round(100 * q * q), nAa = 100 - nAA - naa, pNext = (2 * nAA + nAa) / 200;
+  const [g] = setup($("c1a"));
+  for (let k = 0; k < 100; k++) {
+    const x = 14 + (k % 10) * 25.5, y = 14 + Math.floor(k / 10) * 25.5, t = k < nAA ? 2 : k < nAA + nAa ? 1 : 0;
+    g.fillStyle = css(t === 2 ? "--AA" : t === 1 ? "--Aa" : "--aa") + "2a"; g.beginPath(); g.roundRect(x, y, 22, 22, 5); g.fill();
+    dot(g, x + 6.5, y + 11, 4.5, css(t >= 1 ? "--AA" : "--aa")); dot(g, x + 15.5, y + 11, 4.5, css(t === 2 ? "--AA" : "--aa"));
+  }
+  const [g2, w] = setup($("c1b"));
+  const X = x => 20 + (w - 40) * x, Y = v => 260 - 240 * v;
+  [0, .25, .5, .75, 1].forEach(v => { seg(g2, X(0), Y(v), X(1), Y(v), css("--grid")); txt(g2, pct(v, 0), X(0) + 2, Y(v) - 3, css("--muted")); });
+  const P = f => Array.from({ length: 101 }, (_, i) => [X(i / 100), Y(f(i / 100))]);
+  poly(g2, P(a => a * a), css("--AA"), 2.5); poly(g2, P(a => 2 * a * (1 - a)), css("--Aa"), 2.5); poly(g2, P(a => (1 - a) ** 2), css("--aa"), 2.5);
+  seg(g2, X(p), Y(0), X(p), Y(1), css("--muted"));
+  dot(g2, X(p), Y(p * p), 6, css("--AA")); dot(g2, X(p), Y(2 * p * q), 6, css("--Aa")); dot(g2, X(p), Y(q * q), 6, css("--aa"));
+  txt(g2, "AA", X(p) + 9, Y(p * p) + 4, css("--AA")); txt(g2, "Aa", X(p) + 9, Y(2 * p * q) + 4, css("--Aa")); txt(g2, "aa", X(p) + 9, Y(q * q) + 4, css("--aa"));
+  stats($("s1"), [["AA = p²", pct(p * p), css("--AA")], ["Aa = 2pq", pct(2 * p * q), css("--Aa")], ["aa = q²", pct(q * q), css("--aa")], ["A in the next generation", pct(pNext), css("--go")]]);
+  $("n1").textContent = `Count the A dots: ${2 * nAA} in the AA squares plus ${nAa} in the Aa squares, out of 200 dots, is ${pct(pNext)}: the same p you started with (up to rounding to 100 individuals). Heterozygotes are most common at p = 50%, where they are half of everyone.`;
+}
+$("p").addEventListener("input", one);
+(() => { const c = $("c1b"); let down = false;
+  const set = e => { const r = c.getBoundingClientRect(); $("p").value = Math.max(0, Math.min(1, (e.clientX - r.left - 20) / (r.width - 40))).toFixed(2); one(); };
+  c.addEventListener("pointerdown", e => { down = true; c.setPointerCapture(e.pointerId); set(e); });
+  c.addEventListener("pointermove", e => down && set(e)); c.addEventListener("pointerup", () => down = false); c.style.cursor = "ew-resize"; })();
+
+/* TWO */
+const presets = [["A is dominant and helps", [1.05, 1.05, 1]], ["A is recessive and helps", [1.05, 1, 1]], ["Heterozygote advantage", [0.9, 1, 0.8]], ["Heterozygote disadvantage", [1, 0.9, 1]], ["Neutral", [1, 1, 1]]];
+$("presets").innerHTML = `<span class="mono" style="font-size:12px;color:var(--muted)">presets:</span>` + presets.map(([n], i) => `<button data-i="${i}">${n}</button>`).join("");
+$("presets").addEventListener("click", e => { const i = e.target.dataset.i; if (i == null) return; const f = presets[i][1]; ["wAA", "wAa", "waa"].forEach((id, k) => $(id).value = f[k]); two(); });
+function two() {
+  const wAA = +$("wAA").value, wAa = +$("wAa").value, waa = +$("waa").value, p0 = +$("p0").value;
+  $("wAAL").textContent = wAA.toFixed(2); $("wAaL").textContent = wAa.toFixed(3); $("waaL").textContent = waa.toFixed(2); $("p0L").textContent = p0.toFixed(2);
+  const traj = [p0];
+  for (let g = 1; g <= 200; g++) { const p = traj[g - 1], q = 1 - p, wb = p * p * wAA + 2 * p * q * wAa + q * q * waa; traj.push((p * p * wAA + p * q * wAa) / wb); }
+  const reach = traj.findIndex(x => x >= 0.99), den = 2 * wAa - wAA - waa, pS = den !== 0 ? (wAa - waa) / den : -1, bal = pS > 0 && pS < 1 && wAa > wAA && wAa > waa;
+  const [g, w] = setup($("c2"));
+  const X = t => 40 + (w - 56) * t / 200, Y = v => 236 - 216 * v;
+  [0, .25, .5, .75, 1].forEach(v => { seg(g, X(0), Y(v), X(200), Y(v), css("--grid")); txt(g, pct(v, 0), 34, Y(v) + 4, css("--muted"), "right"); });
+  [50, 100, 150, 200].forEach(t => { seg(g, X(t), Y(0), X(t), Y(1), css("--grid")); txt(g, t, X(t), 252, css("--muted"), "center"); });
+  if (bal) seg(g, X(0), Y(pS), X(200), Y(pS), css("--go"), 1.5);
+  poly(g, traj.map((v, i) => [X(i), Y(v)]), css("--sel"), 2.5);
+  dot(g, X(0), Y(p0), 5, css("--sel")); dot(g, X(200), Y(traj[200]), 5, css("--sel"));
+  $("l2").innerHTML = bal ? `<i style="background:var(--go)"></i>the balance point p* = ${pct(pS)}` : "";
+  stats($("s2"), [["Fitness used", `${wAA} · ${wAa} · ${waa}`], ["After 50 generations", pct(traj[50])], ["After 200", pct(traj[200]), css("--sel")], ["Reaches 99%", reach < 0 ? "not in 200" : `generation ${reach}`, reach < 0 ? "" : css("--go")]]);
+  $("b2").innerHTML = bal ? `<span class="badge good">heterozygote advantage: both alleles are kept, near ${pct(pS)} A</span>`
+    : wAA === wAa && wAa === waa ? `<span class="badge meh">equal fitness: Hardy–Weinberg, nothing moves</span>`
+    : traj[200] > p0 ? `<span class="badge selb">selection favours A</span>` : `<span class="badge bad">selection favours a</span>`;
+}
+["wAA", "wAa", "waa", "p0"].forEach(id => $(id).addEventListener("input", two));
+
+/* THREE: the same Park–Miller + Box–Muller + normal approximation as the bib page */
+const M = 2147483647;
+function simulate(N, seed) {
+  return [0, 1, 2, 3, 4, 5, 6, 7].map(r => {
+    let s = seed * 7919 + r * 104729 + 1, p = 0.5; const path = [0.5];
+    for (let g = 0; g < 100; g++) {
+      const s1 = (s * 48271) % M, s2 = (s1 * 48271) % M;
+      const z = Math.sqrt(-2 * Math.log(s1 / M)) * Math.cos(2 * Math.PI * s2 / M);
+      const k = Math.max(0, Math.min(2 * N, Math.round(2 * N * p + z * Math.sqrt(2 * N * p * (1 - p)))));
+      s = s2; p = k / (2 * N); path.push(p);
+    }
+    return path;
+  });
+}
+function three() {
+  const N = +$("N").value, seed = +$("seed").value, gen = +$("gen").value;
+  $("NL").textContent = N; $("seedL").textContent = seed; $("genL").textContent = gen;
+  const runs = simulate(N, seed);
+  const [g, w] = setup($("c3"));
+  const X = t => 40 + (w - 56) * t / 100, Y = v => 256 - 236 * v;
+  [0, .25, .5, .75, 1].forEach(v => { seg(g, X(0), Y(v), X(100), Y(v), v === .5 ? css("--faint") : css("--grid")); txt(g, pct(v, 0), 34, Y(v) + 4, css("--muted"), "right"); });
+  runs.forEach((path, r) => {
+    const col = css("--r" + r);
+    poly(g, path.slice(0, gen + 1).map((v, i) => [X(i), Y(v)]), col, 2);
+    dot(g, X(gen), Y(path[gen]), 4, col);
+  });
+  txt(g, `generation ${gen}`, X(100), 272, css("--muted"), "right");
+  const end = runs.map(r => r[gen]), fixed = end.filter(x => x === 1).length, lost = end.filter(x => x === 0).length;
+  const het = end.reduce((a, x) => a + 2 * x * (1 - x), 0) / 8, theory = 0.5 * Math.pow(1 - 1 / (2 * N), gen);
+  stats($("s3"), [["Fixed at 100% A", fixed, fixed ? css("--sel") : ""], ["Lost (0% A)", lost, lost ? css("--aa") : ""], ["Heterozygosity left", pct(het), "", "simulated"], ["Expected", pct(theory), "", `0.5 × (1 − 1/2N)^${gen}`]]);
+}
+["N", "seed", "gen"].forEach(id => $(id).addEventListener("input", three));
+$("reroll").onclick = () => { $("seed").value = 1 + Math.floor(Math.random() * 60); three(); };
+let raf3 = null;
+$("play3").onclick = () => {
+  if (raf3) { cancelAnimationFrame(raf3); raf3 = null; $("play3").textContent = "▶ replay"; return; }
+  $("gen").value = 0; let last = performance.now(), acc = 0; $("play3").textContent = "❚❚ pause";
+  const tick = now => { acc += (now - last) / 1000 * 30; last = now; if (acc >= 1) { $("gen").value = Math.min(100, +$("gen").value + Math.floor(acc)); acc %= 1; three(); }
+    if (+$("gen").value < 100) raf3 = requestAnimationFrame(tick); else { raf3 = null; $("play3").textContent = "▶ replay"; } };
+  raf3 = requestAnimationFrame(tick);
+};
+
+/* FOUR */
+const kim = (n, s) => (1 - Math.exp(-2 * s)) / (1 - Math.exp(-4 * n * s));
+function four() {
+  const s = +$("s").value / 100, lg = +$("lg").value, N = Math.round(10 ** lg), u = kim(N, s), neu = 1 / (2 * N);
+  $("sL").textContent = (+$("s").value).toFixed(1); $("lgL").textContent = N.toLocaleString("en");
+  const [g, w] = setup($("c4"));
+  const X = l => 50 + (w - 66) * (l - 1) / 3, Y = pr => 20 + 216 * (-Math.log10(pr)) / 5;
+  for (let d = 0; d <= 5; d++) { seg(g, X(1), 20 + 216 * d / 5, X(4), 20 + 216 * d / 5, css("--grid")); txt(g, ["100%", "10%", "1%", "0.1%", "0.01%", "0.001%"][d], 44, 24 + 216 * d / 5, css("--muted"), "right", 10); }
+  for (let l = 1; l <= 4; l++) { seg(g, X(l), 20, X(l), 236, css("--grid")); txt(g, "N = " + (10 ** l).toLocaleString("en"), X(l), 252, css("--muted"), l === 1 ? "left" : l === 4 ? "right" : "center"); }
+  seg(g, X(1), Y(2 * s), X(4), Y(2 * s), css("--go"), 1.5); txt(g, "2s", X(4) - 4, Y(2 * s) - 5, css("--go"), "right");
+  const L = Array.from({ length: 121 }, (_, i) => 1 + 3 * i / 120);
+  poly(g, L.map(l => [X(l), Y(1 / (2 * 10 ** l))]), css("--muted"), 2);
+  poly(g, L.map(l => [X(l), Y(kim(10 ** l, s))]), css("--sel"), 3);
+  seg(g, X(lg), 20, X(lg), 236, css("--faint"));
+  dot(g, X(lg), Y(u), 6, css("--sel")); dot(g, X(lg), Y(neu), 5, css("--muted"));
+  const drift = 4 * N * s < 1;
+  stats($("s4"), [["N", N.toLocaleString("en")], ["4Ns", (Math.round(4 * N * s * 100) / 100), drift ? css("--warn") : css("--go")], ["Fixation chance u", pct(u, 2), css("--sel")], ["Neutral 1/2N", pct(neu, 3)]]);
+  $("b4").innerHTML = drift ? `<span class="badge warnb">drift wins: selection this weak is invisible in a population this small</span>`
+    : `<span class="badge good">selection wins on average, yet ${Math.round(1000 * (1 - u))} of 1000 such mutations are still lost</span>`;
+  $("n4").textContent = `Advantage over a neutral mutation: ${(Math.round(u / neu * 10) / 10)} times as likely to fix. With 2s = ${pct(2 * s, 2)}, the approximation is off by ${pct(Math.abs(u - 2 * s) / u)} here.`;
+}
+["s", "lg"].forEach(id => $(id).addEventListener("input", four));
+function all() { one(); two(); three(); four(); }
+all(); addEventListener("resize", all);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", all);
+</script>
+</body>
+</html>

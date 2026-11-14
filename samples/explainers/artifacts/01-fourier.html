@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Every wave is a sum of circles</title>
+<style>
+  :root {
+    --paper: #f4efe4;
+    --sheet: #fbf8f1;
+    --ink: #1d2128;
+    --muted: #5d6470;
+    --faint: #d9d1c0;
+    --grid: rgba(29, 33, 40, 0.07);
+    --trace: #d2452f;
+    --sum: #1f5fa8;
+    --ghost: #8e96a3;
+    --gold: #c08a1b;
+    --good: #2f7d58;
+    --shadow: 0 1px 0 rgba(0,0,0,.04), 0 12px 30px -18px rgba(40,30,10,.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0f1216;
+      --sheet: #161b21;
+      --ink: #e8e4da;
+      --muted: #98a0ab;
+      --faint: #2a313a;
+      --grid: rgba(232, 228, 218, 0.06);
+      --trace: #ff7a5c;
+      --sum: #6fb4ff;
+      --ghost: #59626e;
+      --gold: #f0c25a;
+      --good: #63c795;
+      --shadow: 0 1px 0 rgba(255,255,255,.03), 0 18px 40px -20px rgba(0,0,0,.8);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); }
+  body {
+    margin: 0; color: var(--ink);
+    font: 17px/1.62 Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 28px 28px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 28px 28px,
+      var(--paper);
+  }
+  main { max-width: 920px; margin: 0 auto; padding: 56px 24px 80px; }
+  .mono, .kicker, label, .readout, button, .chip { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .kicker { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--trace); }
+  h1 { font-size: clamp(38px, 6vw, 62px); line-height: 1.02; margin: 10px 0 18px; font-weight: 400; letter-spacing: -.02em; }
+  h1 em { color: var(--sum); font-style: italic; }
+  h2 { font-size: 30px; font-weight: 400; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 .n { font: 13px ui-monospace, Menlo, monospace; color: var(--trace); vertical-align: middle; margin-right: 10px; letter-spacing: .1em; }
+  p { margin: 0 0 14px; max-width: 68ch; }
+  .lede { font-size: 20px; color: var(--muted); max-width: 60ch; }
+  section { margin-top: 64px; }
+  .panel {
+    background: var(--sheet); border: 1px solid var(--faint); border-radius: 16px;
+    box-shadow: var(--shadow); padding: 18px; margin: 18px 0 14px;
+  }
+  canvas { display: block; width: 100%; border-radius: 10px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: center; margin-top: 14px; }
+  label { font-size: 12px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; display: flex; align-items: center; gap: 10px; }
+  label b { color: var(--ink); font-weight: 600; min-width: 2.4em; text-align: right; font-size: 14px; }
+  input[type=range] { accent-color: var(--sum); width: 180px; }
+  .seg { display: inline-flex; border: 1px solid var(--faint); border-radius: 999px; padding: 3px; background: var(--paper); }
+  .seg button { border: 0; background: transparent; color: var(--muted); padding: 6px 14px; border-radius: 999px; cursor: pointer; font-size: 13px; }
+  .seg button.on { background: var(--ink); color: var(--sheet); }
+  button.act { border: 1px solid var(--faint); background: var(--paper); color: var(--ink); border-radius: 999px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+  button.act:hover { border-color: var(--sum); }
+  .readout { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+  .chip { font-size: 13px; padding: 5px 11px; border-radius: 8px; background: var(--paper); border: 1px solid var(--faint); }
+  .chip b { color: var(--sum); }
+  .chip.warn b { color: var(--trace); }
+  .formula { font: 15px/1.5 ui-monospace, Menlo, monospace; color: var(--muted); overflow-x: auto; white-space: nowrap; padding: 4px 0; }
+  .two { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+  .legend { display: flex; gap: 18px; font: 12px ui-monospace, Menlo, monospace; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+  .aside { border-left: 3px solid var(--gold); padding: 4px 0 4px 16px; color: var(--muted); font-style: italic; }
+  .closing { margin-top: 72px; border-top: 1px solid var(--faint); padding-top: 28px; }
+  .closing ol { padding-left: 22px; max-width: 68ch; }
+  .closing li { margin-bottom: 10px; }
+  .closing li::marker { color: var(--trace); font-family: ui-monospace, Menlo, monospace; }
+  .hint { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <div class="kicker">Explainer 01 · Signals</div>
+  <h1>Every wave is a sum of <em>circles</em></h1>
+  <p class="lede">A circle spinning at a steady rate traces a sine wave. Hang a smaller, faster circle off its rim, and another off that one, and the tip can draw almost anything: a square wave with sharp corners, a sawtooth, a triangle. That is Fourier's idea, and it runs your phone's audio, your JPEGs and your radio.</p>
+
+  <div class="panel">
+    <canvas id="hero" height="260"></canvas>
+    <div class="legend"><span><i style="background:var(--ghost)"></i>circles, each spinning at a whole-number multiple of the first</span><span><i style="background:var(--trace)"></i>height of the tip, over time</span></div>
+  </div>
+
+  <section>
+    <h2><span class="n">01</span>Stacking sines</h2>
+    <p>Start with one sine wave, <span class="mono">sin x</span>. It is a poor square wave: round where the square is flat, smooth where it jumps. Now add <span class="mono">sin 3x / 3</span>, a wave three times as fast and a third as tall. The shoulders lift and the middle flattens. Keep adding odd harmonics, each <span class="mono">1/k</span> as tall, and the sum hugs the square tighter and tighter.</p>
+    <div class="panel">
+      <canvas id="build" height="300"></canvas>
+      <div class="legend"><span><i style="background:var(--ink);opacity:.5"></i>target wave</span><span><i style="background:var(--sum)"></i>sum of the first terms</span><span><i style="background:var(--ghost)"></i>each term on its own</span></div>
+      <div class="controls">
+        <div class="seg" id="waveSeg"><button data-w="square" class="on">square</button><button data-w="saw">sawtooth</button><button data-w="tri">triangle</button></div>
+        <label>terms <input type="range" id="nBuild" min="1" max="40" value="3"><b id="nBuildV">3</b></label>
+        <label><input type="checkbox" id="showParts" checked> show terms</label>
+      </div>
+      <div class="formula" id="formula"></div>
+      <div class="readout"><span class="chip">highest harmonic <b id="topK"></b></span><span class="chip">average error <b id="rms"></b></span></div>
+    </div>
+    <p>The three shapes need different recipes. The square uses only odd harmonics at <span class="mono">1/k</span>. The sawtooth uses every harmonic, with alternating signs. The triangle uses odd harmonics at <span class="mono">1/k²</span>, so they die away fast: a triangle has no jumps, only corners, and smooth things need little high-frequency help.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">02</span>Circles on circles</h2>
+    <p>Every term <span class="mono">b·sin(kx)</span> is the height of a point on a circle of radius <span class="mono">b</span> turning <span class="mono">k</span> times while the first circle turns once. Put each circle's centre on the previous circle's rim and the tip's height is the sum. Ancient astronomers used the same trick, "epicycles", to fit planetary orbits.</p>
+    <div class="panel">
+      <canvas id="epi" height="300"></canvas>
+      <div class="controls">
+        <button class="act" id="play">pause</button>
+        <label>circles <input type="range" id="nEpi" min="1" max="12" value="4"><b id="nEpiV">4</b></label>
+        <label>speed <input type="range" id="speed" min="0.1" max="2" step="0.1" value="0.6"><b id="speedV">0.6</b></label>
+        <label>time <input type="range" id="tEpi" min="0" max="6.283" step="0.001" value="0"><b id="tEpiV">0°</b></label>
+      </div>
+      <div class="hint" style="margin-top:8px">The wave on the right uses the shape picked in section 01. Drag "time" to scrub.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">03</span>The overshoot that never goes away</h2>
+    <p>Look closely at a jump. Next to it the sum overshoots, rings, and settles. Add more terms and the ringing squeezes closer to the jump, but its first peak does not shrink. With a hundred terms or a million, it rises about <b>9% of the jump</b> above the top. This is the <b>Gibbs phenomenon</b>, first worked out by Henry Wilbraham in 1848 and later by J. Willard Gibbs.</p>
+    <div class="panel two">
+      <div>
+        <canvas id="gibbs" height="280"></canvas>
+        <div class="controls"><label>terms <input type="range" id="nG" min="1" max="200" value="10"><b id="nGV">10</b></label></div>
+        <div class="readout"><span class="chip warn">first peak <b id="peak"></b></span><span class="chip warn">overshoot <b id="over"></b> of the jump</span><span class="chip">peak sits at x = <b id="peakX"></b></span></div>
+      </div>
+      <div>
+        <canvas id="gibbsN" height="280"></canvas>
+        <div class="hint">overshoot (% of jump) against number of terms, log scale. It levels off at 8.95%, never zero.</div>
+      </div>
+    </div>
+    <p class="aside">Why? Each finite sum is smooth, and a smooth curve cannot jump. It must climb from −1 to +1 in a sliver of width about π/N, and squeezing a fixed shape into a thinner sliver keeps its height. The error shrinks in area, not in peak: the sum converges "on average", not at every point at once.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">04</span>Which harmonics are in it?</h2>
+    <p>The list of amplitudes is the wave's <b>spectrum</b>: a recipe instead of a picture. Equalisers, MP3 and noise filters edit sound by editing this list. Click a bar to switch that harmonic off and on and watch what the wave loses.</p>
+    <div class="panel">
+      <canvas id="spec" height="220"></canvas>
+      <canvas id="specWave" height="180" style="margin-top:12px"></canvas>
+      <div class="controls">
+        <div class="seg" id="waveSeg2"><button data-w="square" class="on">square</button><button data-w="saw">sawtooth</button><button data-w="tri">triangle</button></div>
+        <button class="act" id="allOn">all on</button>
+        <button class="act" id="low3">only the first 3</button>
+        <button class="act" id="noFund">remove the fundamental</button>
+      </div>
+      <div class="readout"><span class="chip">harmonics on <b id="onCount"></b></span><span class="chip">energy kept <b id="energy"></b></span></div>
+    </div>
+    <p>Removing the fundamental leaves a wave with the same jumps but a wobbling top: the edges live in the high harmonics, the overall shape in the low ones. Keep only the first three and you have a low-pass filter: the edges blur but the beat remains.</p>
+  </section>
+
+  <section class="closing">
+    <h2>What you just saw</h2>
+    <ol>
+      <li>A periodic wave can be written as a sum of sines whose frequencies are whole multiples of one base frequency.</li>
+      <li>Each sine is a spinning circle; chaining circles adds their heights, so the tip of the chain draws the wave.</li>
+      <li>The size of each term tells you how rough the wave is: jumps give amplitudes falling like 1/k, corners like 1/k².</li>
+      <li>At a jump, any finite sum overshoots by about 9% of the jump, however many terms you take (Gibbs).</li>
+      <li>The list of amplitudes, the spectrum, is a complete description of the wave, and editing it is filtering.</li>
+    </ol>
+  </section>
+</main>
+
+<script>
+(() => {
+  const TAU = Math.PI * 2;
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  let C = {};
+  const readColors = () => { C = { ink: css('--ink'), muted: css('--muted'), faint: css('--faint'), grid: css('--grid'), trace: css('--trace'), sum: css('--sum'), ghost: css('--ghost'), gold: css('--gold'), sheet: css('--sheet'), good: css('--good') }; };
+  readColors();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readColors(); drawAll(); });
+
+  // Sine coefficient b_k of each wave (period 2π, height ±1)
+  const coef = (w, k) => {
+    if (w === 'square') return k % 2 ? 4 / (Math.PI * k) : 0;
+    if (w === 'saw') return (k % 2 ? 2 : -2) / (Math.PI * k);
+    return k % 2 ? (((k - 1) / 2) % 2 ? -1 : 1) * 8 / (Math.PI * Math.PI * k * k) : 0;
+  };
+  const target = (w, x) => {
+    x = ((x + Math.PI) % TAU + TAU) % TAU - Math.PI; // to (-π, π]
+    if (w === 'square') return x === 0 ? 0 : Math.sign(x);
+    if (w === 'saw') return x / Math.PI;
+    const a = Math.abs(x); return a <= Math.PI / 2 ? 2 * x / Math.PI : Math.sign(x) * (2 - 2 * a / Math.PI);
+  };
+  const harmonics = (w, n) => { const out = []; for (let k = 1; out.length < n; k++) if (coef(w, k) !== 0) out.push(k); return out; };
+  const partial = (w, ks, x) => ks.reduce((s, k) => s + coef(w, k) * Math.sin(k * x), 0);
+
+  function setup(cv) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth, h = cv.getAttribute('height') * 1;
+    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + 'px'; }
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+    return { g, w, h };
+  }
+  const path = (g, pts, color, width, dash) => {
+    g.beginPath(); g.setLineDash(dash || []); g.strokeStyle = color; g.lineWidth = width;
+    pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); g.setLineDash([]);
+  };
+  const axes = (g, w, h, my) => {
+    g.strokeStyle = C.faint; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, my); g.lineTo(w, my); g.stroke();
+  };
+
+  // ---------- state ----------
+  let wave = 'square';
+  const $ = id => document.getElementById(id);
+
+  // ---------- 01 build ----------
+  function drawBuild() {
+    const { g, w, h } = setup($('build'));
+    const n = +$('nBuild').value; $('nBuildV').textContent = n;
+    const ks = harmonics(wave, n);
+    const pad = 16, my = h / 2, sy = (h / 2 - pad) / 1.3;
+    const X = x => (x + Math.PI) / (2 * TAU) * w * 1; // two periods: x in [-π, 3π]
+    axes(g, w, h, my);
+    const M = 600, xs = [...Array(M + 1)].map((_, i) => -Math.PI + i / M * 2 * TAU);
+    if ($('showParts').checked) ks.slice(0, 8).forEach(k => path(g, xs.map(x => [X(x), my - sy * coef(wave, k) * Math.sin(k * x)]), C.ghost, 1));
+    path(g, xs.map(x => [X(x), my - sy * target(wave, x)]), C.ink, 1.5, [5, 5]);
+    path(g, xs.map(x => [X(x), my - sy * partial(wave, ks, x)]), C.sum, 2.6);
+    // formula
+    const name = { square: '4/π', saw: '2/π', tri: '8/π²' }[wave];
+    const term = k => {
+      const b = coef(wave, k), sgn = b < 0 ? '−' : '+';
+      const den = wave === 'tri' ? (k === 1 ? '' : ' / ' + k * k) : (k === 1 ? '' : ' / ' + k);
+      return { sgn, s: `sin ${k === 1 ? '' : k}x${den}` };
+    };
+    const shown = ks.slice(0, 6).map(term);
+    let f = name + ' · ( ' + shown.map((t, i) => (i === 0 ? (t.sgn === '−' ? '−' : '') : ' ' + t.sgn + ' ') + t.s).join('') + (ks.length > 6 ? ' + … (' + (ks.length - 6) + ' more)' : '') + ' )';
+    $('formula').textContent = f;
+    $('topK').textContent = ks[ks.length - 1];
+    let e = 0; const S = 100; for (let i = 0; i < S; i++) { const x = -Math.PI + i / S * TAU; e += (partial(wave, ks, x) - target(wave, x)) ** 2; }
+    $('rms').textContent = Math.sqrt(e / S).toFixed(3);
+  }
+
+  // ---------- epicycles (hero + 02) ----------
+  function drawEpi(cv, t, ks, w0) {
+    const { g, w, h } = setup(cv);
+    const R = (h / 2 - 18) / 1.3;
+    const cx = Math.min(w * 0.22, h * 0.55), cy = h / 2;
+    const left = cx + R * 1.35;
+    let x = cx, y = cy;
+    const tips = [];
+    ks.forEach(k => {
+      const b = coef(w0, k), r = Math.abs(b) * R, ph = b < 0 ? Math.PI : 0;
+      g.strokeStyle = C.ghost; g.lineWidth = 1; g.globalAlpha = 0.55;
+      g.beginPath(); g.arc(x, y, r, 0, TAU); g.stroke(); g.globalAlpha = 1;
+      const nx = x + r * Math.cos(k * t + ph), ny = y - r * Math.sin(k * t + ph);
+      g.strokeStyle = C.ink; g.lineWidth = 1.4; g.beginPath(); g.moveTo(x, y); g.lineTo(nx, ny); g.stroke();
+      x = nx; y = ny; tips.push([x, y]);
+    });
+    // wave: newest point at `left`, older to the right
+    const span = w - left - 10, M = 400;
+    const pts = [];
+    for (let i = 0; i <= M; i++) { const tt = t - i / M * TAU * 1.5; if (tt < -1e9) break; pts.push([left + i / M * span, cy - R * partial(w0, ks, tt)]); }
+    axes(g, w, h, cy);
+    path(g, pts, C.trace, 2.4);
+    g.setLineDash([3, 4]); g.strokeStyle = C.trace; g.globalAlpha = .6; g.beginPath(); g.moveTo(x, y); g.lineTo(left, y); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+    g.fillStyle = C.trace; g.beginPath(); g.arc(x, y, 4.5, 0, TAU); g.fill();
+    g.beginPath(); g.arc(left, y, 3.5, 0, TAU); g.fill();
+  }
+
+  let playing = true, tHero = 0, tE = 0, last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    tHero += dt * 0.7;
+    drawEpi($('hero'), tHero, harmonics('square', 5), 'square');
+    if (playing) { tE = (tE + dt * +$('speed').value * 1.2) % TAU; $('tEpi').value = tE; }
+    drawEpiPanel();
+    requestAnimationFrame(frame);
+  }
+  function drawEpiPanel() {
+    const n = +$('nEpi').value; $('nEpiV').textContent = n;
+    $('speedV').textContent = (+$('speed').value).toFixed(1);
+    $('tEpiV').textContent = Math.round(tE / TAU * 360) + '°';
+    drawEpi($('epi'), tE, harmonics(wave, n), wave);
+  }
+  $('play').onclick = () => { playing = !playing; $('play').textContent = playing ? 'pause' : 'play'; };
+  $('tEpi').oninput = () => { playing = false; $('play').textContent = 'play'; tE = +$('tEpi').value; };
+
+  // ---------- 03 Gibbs ----------
+  const sq = (n, x) => { let s = 0; for (let j = 0; j < n; j++) { const k = 2 * j + 1; s += Math.sin(k * x) / k; } return 4 / Math.PI * s; };
+  function drawGibbs() {
+    const n = +$('nG').value; $('nGV').textContent = n;
+    const { g, w, h } = setup($('gibbs'));
+    const x0 = -0.9, x1 = 0.9, top = 1.3, bot = -1.3;
+    const X = x => (x - x0) / (x1 - x0) * w, Y = y => (top - y) / (top - bot) * h;
+    g.strokeStyle = C.faint; g.lineWidth = 1;
+    [1, -1, 0].forEach(v => { g.beginPath(); g.moveTo(0, Y(v)); g.lineTo(w, Y(v)); g.stroke(); });
+    g.fillStyle = C.trace; g.globalAlpha = .1; g.fillRect(0, Y(1.179), w, Y(1) - Y(1.179)); g.globalAlpha = 1;
+    path(g, [[0, Y(-1)], [X(0), Y(-1)], [X(0), Y(1)], [w, Y(1)]], C.ink, 1.5, [5, 5]);
+    const M = 700, pts = [];
+    for (let i = 0; i <= M; i++) { const x = x0 + i / M * (x1 - x0); pts.push([X(x), Y(sq(n, x))]); }
+    path(g, pts, C.sum, 2.4);
+    const px = Math.PI / (2 * n), pk = sq(n, px);
+    g.fillStyle = C.trace; g.beginPath(); g.arc(X(px), Y(pk), 5, 0, TAU); g.fill();
+    g.font = '12px ui-monospace, Menlo, monospace'; g.fillStyle = C.muted;
+    g.fillText('+1', 6, Y(1) + 14); g.fillText('−1', 6, Y(-1) - 6); g.fillText('jump at x = 0', X(0) + 8, Y(0) + 16);
+    $('peak').textContent = pk.toFixed(4);
+    $('over').textContent = ((pk - 1) / 2 * 100).toFixed(2) + '%';
+    $('peakX').textContent = 'π/' + (2 * n) + ' = ' + px.toFixed(4);
+
+    // overshoot vs N
+    const c2 = setup($('gibbsN')); const G = c2.g, W = c2.w, H = c2.h;
+    const lx = v => 30 + Math.log10(v) / Math.log10(200) * (W - 40);
+    const ly = v => H - 26 - (v - 7) / (14 - 7) * (H - 40);
+    G.strokeStyle = C.faint; G.lineWidth = 1;
+    [8, 10, 12, 14].forEach(v => { G.beginPath(); G.moveTo(30, ly(v)); G.lineTo(W, ly(v)); G.stroke(); G.fillStyle = C.muted; G.font = '11px ui-monospace, Menlo, monospace'; G.fillText(v + '%', 0, ly(v) + 4); });
+    [1, 10, 100].forEach(v => { G.fillText(v, lx(v) - 4, H - 8); });
+    G.setLineDash([4, 4]); G.strokeStyle = C.trace; G.beginPath(); G.moveTo(30, ly(8.949)); G.lineTo(W, ly(8.949)); G.stroke(); G.setLineDash([]);
+    const pts2 = [];
+    for (let m = 1; m <= 200; m++) pts2.push([lx(m), ly((sq(m, Math.PI / (2 * m)) - 1) / 2 * 100)]);
+    path(G, pts2, C.sum, 2);
+    G.fillStyle = C.trace; G.beginPath(); G.arc(lx(n), ly((pk - 1) / 2 * 100), 5, 0, TAU); G.fill();
+    G.fillStyle = C.trace; G.fillText('8.95%', W - 44, ly(8.949) - 6);
+  }
+
+  // ---------- 04 spectrum ----------
+  const K = 20;
+  let waveS = 'square';
+  let on = Array(K + 1).fill(true);
+  let bars = [];
+  function drawSpec() {
+    const { g, w, h } = setup($('spec'));
+    const base = h - 26, top = 18, bw = w / K;
+    const amp = k => Math.abs(coef(waveS, k));
+    const maxA = amp(1);
+    bars = [];
+    g.font = '11px ui-monospace, Menlo, monospace'; g.textAlign = 'center';
+    for (let k = 1; k <= K; k++) {
+      const a = amp(k), x = (k - 1) * bw + bw * 0.18, bwid = bw * 0.64, bh = a / maxA * (base - top);
+      bars.push({ k, x0: (k - 1) * bw, x1: k * bw });
+      if (a > 0) {
+        g.fillStyle = on[k] ? (coef(waveS, k) < 0 ? C.trace : C.sum) : C.faint;
+        g.fillRect(x, base - bh, bwid, bh);
+        if (!on[k]) { g.strokeStyle = C.ghost; g.setLineDash([3, 3]); g.strokeRect(x, base - bh, bwid, bh); g.setLineDash([]); }
+      }
+      g.fillStyle = a > 0 ? C.ink : C.ghost; g.fillText(k, x + bwid / 2, h - 8);
+    }
+    g.strokeStyle = C.faint; g.beginPath(); g.moveTo(0, base + .5); g.lineTo(w, base + .5); g.stroke();
+    g.textAlign = 'left'; g.fillStyle = C.muted; g.fillText('amplitude |b_k| of harmonic k   (blue +, red −)', 4, 12);
+
+    const ks = []; for (let k = 1; k <= K; k++) if (on[k] && coef(waveS, k) !== 0) ks.push(k);
+    const c2 = setup($('specWave')); const G = c2.g, W = c2.w, H = c2.h, my = H / 2, sy = (H / 2 - 10) / 1.3;
+    const X = x => (x + Math.PI) / (2 * TAU) * W;
+    axes(G, W, H, my);
+    const M = 600, xs = [...Array(M + 1)].map((_, i) => -Math.PI + i / M * 2 * TAU);
+    path(G, xs.map(x => [X(x), my - sy * target(waveS, x)]), C.ink, 1.3, [5, 5]);
+    path(G, xs.map(x => [X(x), my - sy * partial(waveS, ks, x)]), C.sum, 2.4);
+    let tot = 0, kept = 0; for (let k = 1; k <= K; k++) { const b = coef(waveS, k); tot += b * b; if (on[k]) kept += b * b; }
+    $('onCount').textContent = ks.length + ' of ' + harmonics(waveS, 99).filter(k => k <= K).length;
+    $('energy').textContent = (kept / tot * 100).toFixed(1) + '%';
+  }
+  $('spec').addEventListener('click', e => {
+    const r = $('spec').getBoundingClientRect(), x = e.clientX - r.left;
+    const b = bars.find(b => x >= b.x0 && x < b.x1); if (b && coef(waveS, b.k) !== 0) { on[b.k] = !on[b.k]; drawSpec(); }
+  });
+  $('spec').style.cursor = 'pointer';
+  $('allOn').onclick = () => { on = on.map(() => true); drawSpec(); };
+  $('low3').onclick = () => { const ks = harmonics(waveS, 3); on = on.map((_, k) => ks.includes(k)); drawSpec(); };
+  $('noFund').onclick = () => { on = on.map((_, k) => k !== 1); drawSpec(); };
+
+  function seg(id, fn) {
+    $(id).addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      [...$(id).children].forEach(c => c.classList.toggle('on', c === b)); fn(b.dataset.w);
+    });
+  }
+  seg('waveSeg', w => { wave = w; drawBuild(); });
+  seg('waveSeg2', w => { waveS = w; on = on.map(() => true); drawSpec(); });
+  $('nBuild').oninput = drawBuild; $('showParts').onchange = drawBuild;
+  $('nG').oninput = drawGibbs;
+
+  function drawAll() { drawBuild(); drawGibbs(); drawSpec(); drawEpiPanel(); }
+  addEventListener('resize', drawAll);
+  drawAll();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

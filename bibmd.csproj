@@ -33,10 +33,10 @@
     </KnownILCompilerPack>
   </ItemGroup>
   <ItemGroup>
-    <!-- The web viewer is its own project, which compiles these sources in its turn. -->
-    <Compile Remove="web/**" />
-    <None Remove="web/**" />
-    <Content Remove="web/**" />
+    <!-- The web viewer and the iOS app are projects of their own, which compile these sources in their turn. -->
+    <Compile Remove="web/**;ios/**" />
+    <None Remove="web/**;ios/**" />
+    <Content Remove="web/**;ios/**" />
   </ItemGroup>
   <ItemGroup>
     <!-- The editor's monospaced face (iA Writer Mono S, OFL: assets/fonts/OFL.txt), in the binary. -->

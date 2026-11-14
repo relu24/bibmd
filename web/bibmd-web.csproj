@@ -13,6 +13,10 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
+    <!-- Compiled ahead of time to WebAssembly: interpreted, a frame of the managed rasterizer took
+         three times as long, and longer still for the first seconds while the interpreter warmed up,
+         so scrolling a document just opened crawled. It costs about 2 MB more to download. -->
+    <RunAOTCompilation>true</RunAOTCompilation>
   </PropertyGroup>
   <PropertyGroup>
     <BibDocRoot Condition="'$(BibDocRoot)' == ''">$(MSBuildThisFileDirectory)../../bibdoc</BibDocRoot>

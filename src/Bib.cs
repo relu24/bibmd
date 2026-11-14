@@ -14,7 +14,7 @@ namespace BibMd;
 /// components. A click runs the program once more to learn what the click
 /// would do; this is a viewer, so it says so under the block and does nothing.
 /// </summary>
-public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
+public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
 {
     private static readonly ComponentSize[] Sizes = [ComponentSize.Sm, ComponentSize.Md, ComponentSize.Lg, ComponentSize.Xl];
 
@@ -34,32 +34,6 @@ public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
     public void Blur()
     {
         if (HasFocus) runtime.Focus("");
-    }
-
-    /// <summary>A fenced block whose info string is bib: a program.</summary>
-    public static bool IsBib(string source) => Info(source) is { } info
-        && (info == "bib" || info.StartsWith("bib ", StringComparison.Ordinal)) && !IsData(source);
-
-    /// <summary>A fenced block whose info string is <c>bib data</c>: YAML whose keys are added to the document's data.</summary>
-    public static bool IsData(string source) => Info(source) is { } info
-        && info.Split(' ', StringSplitOptions.RemoveEmptyEntries) is ["bib", "data", ..];
-
-    // A fence's info string, or null for anything that is not a fenced block.
-    private static string? Info(string source)
-    {
-        int nl = source.IndexOf('\n');
-        string first = (nl < 0 ? source : source[..nl]).Trim();
-        if (!first.StartsWith("```", StringComparison.Ordinal) && !first.StartsWith("~~~", StringComparison.Ordinal)) return null;
-        return first.TrimStart('`', '~').Trim();
-    }
-
-    // The lines between the fences (a block still being written may have no closing one).
-    internal static string Body(string source)
-    {
-        var lines = source.Split('\n').Skip(1).ToList();
-        if (lines.Count > 0 && lines[^1].TrimStart() is var last && (last.StartsWith("```", StringComparison.Ordinal) || last.StartsWith("~~~", StringComparison.Ordinal)))
-            lines.RemoveAt(lines.Count - 1);
-        return string.Join('\n', lines);
     }
 
     /// <summary>
@@ -126,6 +100,9 @@ public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
     private ComponentSize Smaller => Sizes[Math.Max(0, _sizeIndex - 1)];
     private ComponentSize Larger => Sizes[Math.Min(Sizes.Length - 1, _sizeIndex + 1)];
     private float Gap => MathF.Round(runtime.FontInScope(Size0).Size * 0.6f);
+
+    // The narrowest a grid's cell and a row's child are drawn: narrower, they go onto more lines.
+    private const float MinCell = 120f, MinRowCell = 240f;
 
     private void DrawAll(List<FrameNode> nodes, int k, float width)
     {
@@ -270,6 +247,10 @@ public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             {
                 int columns = Math.Clamp((int)(n.Props.TryGetValue("columns", out var c) && c is not null ? Values.Num(c) : 3), 1, 6);
                 float gap = 12f;
+                // Fewer columns where the cells would be narrower than what they hold (a phone): a
+                // stat as wide as its label and number, anything else MinCell.
+                float need = n.Children.Count == 0 ? 0f : n.Children.Max(child => child.Type == "stat" ? Measure(child, width) : MinCell);
+                columns = Math.Clamp((int)MathF.Floor((width + gap) / (need + gap)), 1, columns);
                 float each = MathF.Floor((width - gap * (columns - 1)) / columns);
                 var grid = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
                 for (int start = 0; start < n.Children.Count; start += columns)
@@ -299,17 +280,27 @@ public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 break;
             case "row":
             {
-                var row = runtime.BeginParent(runtime.Row().Sized(Size.Fill));
+                // Side by side, as many to a line as fit at MinRowCell or wider (all of them on a
+                // page; on a phone, one under another).
                 float gap = MathF.Round(Gap * 2f);
-                float each = n.Children.Count == 0 ? width : (width - gap * (n.Children.Count - 1)) / n.Children.Count;
-                for (int i = 0; i < n.Children.Count; i++)
+                int count = Math.Max(1, n.Children.Count);
+                int across = Math.Clamp((int)MathF.Floor((width + gap) / (MinRowCell + gap)), 1, count);
+                float each = (width - gap * (across - 1)) / across;
+                var lines = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
+                for (int start = 0; start < n.Children.Count; start += across)
                 {
-                    if (i > 0) runtime.Gap(gap);
-                    var cell = runtime.BeginParent(runtime.Column().Sized(Size.Px(MathF.Floor(each))));
-                    Draw(n.Children[i], k, each);
-                    runtime.EndParent(cell);
+                    if (start > 0) runtime.Gap(Gap);
+                    var row = runtime.BeginParent(runtime.Row().Sized(Size.Fill));
+                    for (int i = start; i < Math.Min(start + across, n.Children.Count); i++)
+                    {
+                        if (i > start) runtime.Gap(gap);
+                        var cell = runtime.BeginParent(runtime.Column().Sized(Size.Px(MathF.Floor(each))));
+                        Draw(n.Children[i], k, each);
+                        runtime.EndParent(cell);
+                    }
+                    runtime.EndParent(row);
                 }
-                runtime.EndParent(row);
+                runtime.EndParent(lines);
                 break;
             }
             case "stat":
@@ -344,7 +335,10 @@ public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                     var left = runtime.BeginParent(runtime.Column().Sized(Size.Px(MathF.Floor(width * 0.4f))));
                     runtime.Text(Values.Str(pair.GetValueOrDefault("label")), Size0, UiColor.TextSecondary);
                     runtime.EndParent(left);
-                    runtime.Text(Number(pair.GetValueOrDefault("value")), Size0, UiColor.TextPrimary);
+                    // The value wraps in the rest of the line, as long as it is.
+                    var right = runtime.BeginParent(runtime.Column().Sized(Size.Px(width - MathF.Floor(width * 0.4f))));
+                    Wrapped(Number(pair.GetValueOrDefault("value")), width - MathF.Floor(width * 0.4f), Size0, UiColor.TextPrimary);
+                    runtime.EndParent(right);
                     runtime.EndParent(row);
                     runtime.Gap(4f);
                 }
@@ -389,6 +383,9 @@ public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 float step = n.Props.TryGetValue("step", out var st) && st is not null ? (float)Values.Num(st) : FineStep(max - min);
                 int decimals = step > 0 ? Math.Clamp((int)Math.Ceiling(-Math.Log10(step) - 1e-9), 0, 6) : 4;
                 double value = Values.Num(n.Props.GetValueOrDefault("value"));
+                // A value off the step's grid (0.1 with step 1) is drawn where its label says: on the grid.
+                double snapped = Math.Round(Math.Clamp(step > 0 ? min + Math.Round((value - min) / step) * step : value, min, max), decimals);
+                if (snapped != value) { Set(n, snapped); value = snapped; }
                 var slider = runtime.Slider("bib-" + n.Key, (float)value, min, max, step,
                     $"{n.Text("label")}: {Math.Round(value, decimals).ToString("F" + decimals, System.Globalization.CultureInfo.InvariantCulture)}");
                 slider.Node.Sized(Size.Fill);
@@ -442,6 +439,10 @@ public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             "chips" => MathF.Min(width, (n.Props.GetValueOrDefault("items") as List<object?> ?? [])
                 .Sum(i => Text.Width(runtime, Values.Str(i), runtime.FontInScope(Smaller, FontSlot.Mono)) + 20f)),
             "button" => Text.Width(runtime, n.Text("label") ?? "", font) + 40f,
+            // Its label, or its number (bold, a little wider than measured) and unit.
+            "stat" => MathF.Min(width, MathF.Max(Text.Width(runtime, n.Text("label") ?? "", runtime.FontInScope(Smaller)),
+                Text.Width(runtime, Number(n.Props.GetValueOrDefault("value")), runtime.FontInScope(Larger)) * 1.08f
+                + (n.Text("unit") is { } unit ? 6f + Text.Width(runtime, unit, runtime.FontInScope(Smaller)) : 0f)) + 4f),
             _ => width,   // anything else takes a line of its own
         };
     }
@@ -580,7 +581,10 @@ public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         if (Px(n.Props.GetValueOrDefault("opacity")) is { } o) box.Style.Opacity = o;
         // A layer draws under the children, clipped to the box: w and h are the box's size.
         if (n.Children.FirstOrDefault(c => c.Type == "layer") is { } layer)
-            box.Draw = (b, ctx) => DrawLayer(ctx, layer, b.Extent.X, b.Extent.Y);
+        {
+            var labels = Labels(layer);
+            box.Draw = (b, ctx) => DrawLayer(ctx, layer, labels, b.Extent.X, b.Extent.Y);
+        }
         var kids = n.Children.Where(c => c.Type != "layer").ToList();
         float inner = MathF.Max(0f, w - pad.Left - pad.Right);
         // Centring needs a size of its own along that axis: only a box given one centres.
@@ -589,23 +593,24 @@ public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         using (runtime.Parent(box))
         {
             if (along) runtime.Spacer(Size.Fill);
-            if (row) RowOf(kids, k, inner, gap, n.Props.GetValueOrDefault("wrap") is true, across);
+            if (row) RowOf(kids, k, inner, gap, n.Props.GetValueOrDefault("wrap") is true, across, n.Text("justify") == "between");
             else
             {
-                if (across) runtime.BeginCenterAcross();
+                // Each child centred on its own: one centring around them all would set them in a row.
                 for (int i = 0; i < kids.Count; i++)
                 {
                     if (i > 0) runtime.Gap(gap);
-                    Draw(kids[i], k, inner);
+                    if (across) runtime.BeginCenterAcross();
+                    Draw(kids[i], k, across ? Want(kids[i], inner) ?? inner : inner);
+                    if (across) runtime.EndCenterAcross();
                 }
-                if (across) runtime.EndCenterAcross();
             }
             if (along) runtime.Spacer(Size.Fill);
         }
     }
 
     // A row's children: each as wide as it wants, the ones that fill sharing what is left.
-    private void RowOf(List<FrameNode> kids, int k, float inner, float gap, bool wrap, bool across)
+    private void RowOf(List<FrameNode> kids, int k, float inner, float gap, bool wrap, bool across, bool between = false)
     {
         var wants = kids.Select(c => Want(c, inner)).ToList();
         if (wrap)
@@ -633,6 +638,8 @@ public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         float fixedWidth = wants.Sum(x => x ?? 0f) + gap * Math.Max(0, kids.Count - 1);
         int fills = wants.Count(x => x is null);
         float share = fills == 0 ? 0f : MathF.Max(0f, (inner - fixedWidth) / fills);
+        // Spread out: what no child fills goes between them.
+        if (between && fills == 0 && kids.Count > 1) gap += MathF.Max(0f, inner - fixedWidth) / (kids.Count - 1);
         for (int i = 0; i < kids.Count; i++)
         {
             if (i > 0) runtime.Gap(gap);
@@ -649,8 +656,21 @@ public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         runtime.EndParent(cell);
     }
 
-    // A layer's shapes, in the box's own coordinates, clipped to the box.
-    private static void DrawLayer(DrawContext ctx, FrameNode layer, float w, float h)
+    // A layer's labels, measured while the frame is built: each one's font and width.
+    private Dictionary<FrameNode, (Bibui.Text.Font Font, float Width)> Labels(FrameNode layer)
+    {
+        var labels = new Dictionary<FrameNode, (Bibui.Text.Font, float)>();
+        foreach (var s in layer.Children.Where(c => c.Type == "label"))
+        {
+            var font = runtime.FontInScope(TextSize(s.Props.GetValueOrDefault("size")), Face(s.Text("face")));
+            labels[s] = (font, Text.Width(runtime, s.Text("text") ?? "", font));
+        }
+        return labels;
+    }
+
+    // A layer's shapes, in the box's own coordinates, clipped to the box. A label's y is the
+    // middle of its line, and its x the start, middle or end of it by its align.
+    private static void DrawLayer(DrawContext ctx, FrameNode layer, Dictionary<FrameNode, (Bibui.Text.Font Font, float Width)> labels, float w, float h)
     {
         float sc = ctx.Scale;
         float At(object? v, bool vertical) => v switch
@@ -691,6 +711,15 @@ public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                     path.ArcTo(r, r, 0f, false, true, cx + r, cy);
                     path.Close();
                     ctx.DrawPath(path, paint);
+                    break;
+                }
+                case "label" when labels.TryGetValue(s, out var label):
+                {
+                    float x = At(p.GetValueOrDefault("x"), false), y = At(p.GetValueOrDefault("y"), true);
+                    x -= s.Text("align") switch { "center" => label.Width / 2f, "end" or "right" => label.Width, _ => 0f };
+                    var m = ctx.FontMetrics(label.Font);
+                    ctx.DrawText(s.Text("text") ?? "", x * sc, y * sc - (m.Descent - m.Ascent) / 2f, label.Font,
+                        ctx.Resolve(Colour(p.GetValueOrDefault("color") ?? "ink", UiColor.TextPrimary)));
                     break;
                 }
             }
@@ -1036,6 +1065,8 @@ public sealed class Bib(BibuiRuntime runtime, BibProgram? shared = null)
 public sealed class BibProgram
 {
     private string _key = "";
+    private FrameResult? _frame;
+    private bool _rerun = true;   // a value was set since _frame was run (the program has no clock: nothing else changes it)
 
     public DocSession? Session { get; private set; }
     public string? DataError { get; private set; }
@@ -1046,15 +1077,20 @@ public sealed class BibProgram
     /// <summary>A reader changed a value or clicked, in any of the places that draw the program.</summary>
     public event Action? Changed;
 
-    internal void Touch() => Changed?.Invoke();
+    internal void Touch()
+    {
+        _rerun = true;
+        Changed?.Invoke();
+    }
 
     /// <summary>
     /// This frame of the program the document's blocks make now. A document whose blocks or
     /// data changed gets a new session, keeping the values the reader gave. Null with no bib blocks.
+    /// Run again only when what it reads changed: a frame that scrolls the page draws the last run.
     /// </summary>
     internal FrameResult? Frame(string? front, List<string> dataBlocks, List<string> sources)
     {
-        if (sources.Count == 0) { Session = null; return null; }
+        if (sources.Count == 0) { Session = null; _frame = null; return null; }
         string key = (front ?? "") + "\u0001" + string.Join("\u0002", dataBlocks) + "\u0001" + string.Join("\u0002", sources);
         if (key != _key || Session is null)
         {
@@ -1065,7 +1101,9 @@ public sealed class BibProgram
             DataError = error;
             _key = key;
             Notices.Clear();
+            _rerun = true;
         }
-        return Session.Frame();
+        if (_rerun || _frame is null) (_frame, _rerun) = (Session.Frame(), false);
+        return _frame;
     }
 }

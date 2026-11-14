@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Type-checks bibmd's iOS app on Linux, without the iOS workload: ios/*.cs and the
+    reader's sources (../src, without Program.cs) compiled for net10.0 against
+    Microsoft.iOS.dll from the published reference pack, as an app that runs only on iOS
+    (the platform analyzer flags what iOS does not have), warnings as errors. Nothing here
+    runs. Linking and running need a Mac (ios/bibmd-ios.csproj).
+
+      dotnet build ios/typecheck -c Release
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <RootNamespace>BibMd</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <IsPackable>false</IsPackable>
+    <IosRefPack>Microsoft.iOS.Ref.net10.0_26.5</IosRefPack>
+    <IosRefVersion>26.5.10318</IosRefVersion>
+    <BibDocRoot Condition="'$(BibDocRoot)' == ''">$(MSBuildThisFileDirectory)../../../bibdoc</BibDocRoot>
+    <BibuiSource Condition="'$(BibuiSource)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../bibui-bib-agent'))</BibuiSource>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageDownload Include="$(IosRefPack)" Version="[$(IosRefVersion)]" />
+    <Reference Include="Microsoft.iOS" HintPath="$(NuGetPackageRoot)$(IosRefPack.ToLowerInvariant())/$(IosRefVersion)/ref/net10.0/Microsoft.iOS.dll" Private="false" />
+    <Compile Include="../*.cs" />
+    <Compile Include="../../src/**/*.cs" Exclude="../../src/Program.cs" />
+    <!-- The iOS host's UIKit layer, compiled here too: its assembly is built for net10.0 without it. -->
+    <Compile Include="$(BibuiSource)/bibui-platform-ios/**/*.cs" Exclude="$(BibuiSource)/bibui-platform-ios/obj/**;$(BibuiSource)/bibui-platform-ios/bin/**" />
+    <ProjectReference Include="$(BibDocRoot)/src/BibDoc/BibDoc.csproj" />
+    <ProjectReference Include="$(BibuiSource)/bibui-core/bibui-core.csproj" />
+    <ProjectReference Include="$(BibuiSource)/bibui-raster-managed/backend/Bibui.Raster.Managed.Backend.csproj" />
+  </ItemGroup>
+</Project>
