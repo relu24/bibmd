@@ -20,7 +20,7 @@
     <IosRefPack>Microsoft.iOS.Ref.net10.0_26.5</IosRefPack>
     <IosRefVersion>26.5.10318</IosRefVersion>
     <BibDocRoot Condition="'$(BibDocRoot)' == ''">$(MSBuildThisFileDirectory)../../../bibdoc</BibDocRoot>
-    <BibuiSource Condition="'$(BibuiSource)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../bibui-bib-agent'))</BibuiSource>
+    <BibuiSource Condition="'$(BibuiSource)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../bibui-bibmd'))</BibuiSource>
   </PropertyGroup>
   <ItemGroup>
     <PackageDownload Include="$(IosRefPack)" Version="[$(IosRefVersion)]" />

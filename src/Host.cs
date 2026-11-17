@@ -1,5 +1,9 @@
 using System.Text;
 using System.Text.Json;
+using Bibui.Core;
+using Bibui.Core.Draw;
+using Bibui.Core.Runtime;
+using Bibui.Text;
 
 namespace BibMd;
 
@@ -13,6 +17,43 @@ public sealed partial class App
 {
     /// <summary>Only the document is drawn; the page draws the rest.</summary>
     public bool Bare { get; set; }
+
+    /// <summary>A link's preview picture (<c>--card</c>): bare, and the front matter left out, so the page opens on its title.</summary>
+    public bool Card { get; set; }
+
+    // A card's corner: bibmd's mark as the site's header draws it (the favicon's b, light on dark, and the name
+    // spaced out in the mono face), on a plate of the page's colour, so a link's preview says where it goes.
+    private void CardMark(Box page)
+    {
+        const float glyph = 28f, pad = 10f, letters = 13f, track = 0.3f;
+        const string name = "BIBMD";
+        var font = runtime.FontInScope(FontSize.Px(letters), FontSlot.Mono);
+        float advance = letters * 0.6f + letters * track;   // a mono face's letters are 0.6em wide
+        float w = pad + glyph + 10f + advance * name.Length - letters * track + pad + 2f, h = glyph + 2f * pad;
+        float x = page.Extent.X - w - 20f, y = page.Extent.Y - h - 18f;
+        if (x <= 0f || y <= 0f) return;   // the first frame, laid out before the page knows its size
+        runtime.Box().Sized(Size.Px(w), Size.Px(h)).At(x, y).Draw = (_, ctx) =>
+        {
+            float sc = ctx.Scale;
+            Rgba ground = ctx.Resolve(UiColor.Background), ink = ctx.Resolve(UiColor.TextPrimary);
+            ctx.DrawRect(new RectF(0f, 0f, w * sc, h * sc), 12f * sc, new Paint { Fill = ground.WithAlpha(235) });
+            ctx.DrawRect(new RectF(0f, 0f, w * sc, h * sc), 12f * sc, new Paint { Stroke = ctx.Resolve(UiColor.Border), StrokeWidth = sc });
+            // The favicon's b (32 units): a stem from 7 to 25 at 11.5, and a ring of 5 at (16.5, 19.5).
+            float gx = pad * sc, gy = pad * sc, u = glyph / 32f * sc;
+            ctx.DrawRect(new RectF(gx, gy, gx + glyph * sc, gy + glyph * sc), 8f * u, new Paint { Fill = ink });
+            var stroke = new Paint { Stroke = ground, StrokeWidth = 3.4f * u, Cap = StrokeCap.Round };
+            ctx.DrawLine(gx + 11.5f * u, gy + 7f * u, gx + 11.5f * u, gy + 25f * u, stroke);
+            var ring = ctx.ScratchPath();
+            ring.MoveTo(gx + 21.5f * u, gy + 19.5f * u);
+            ring.ArcTo(5f * u, 5f * u, 0f, false, true, gx + 11.5f * u, gy + 19.5f * u);
+            ring.ArcTo(5f * u, 5f * u, 0f, false, true, gx + 21.5f * u, gy + 19.5f * u);
+            ctx.DrawPath(ring, stroke);
+            // Its capitals (0.7em) centred on the plate; DrawText takes the ascent's top.
+            float tx = gx + (glyph + 10f) * sc, top = (h / 2f + letters * 0.35f) * sc - MathF.Abs(ctx.FontMetrics(font).Ascent);
+            for (int i = 0; i < name.Length; i++)
+                ctx.DrawText(name.AsSpan(i, 1), tx + i * advance * sc, top, font, ink);
+        };
+    }
 
     private int _flashes;     // each flash counted, so the page shows the same words twice when said twice
     private int _panelFocus;  // Tab asked for the menu's keys: the page moves its focus there

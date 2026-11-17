@@ -26,19 +26,27 @@ public static class Check
         var sources = new List<string>();
         var starts = new List<int>();   // the file line of each bib block's opening fence
         var dataBlocks = new List<string>();
+        var pending = new List<string>();   // parts still to be written
         string? front = null;
         foreach (var b in Blocks.Split(text))
         {
             string src = text[b.Start..b.End];
             if (b.Kind == BlockKind.FrontMatter) front = src;
             else if (b.Kind == BlockKind.Code && Bib.IsData(src)) dataBlocks.Add(Bib.Body(src));
+            else if (b.Kind == BlockKind.Code && Bib.Pending(src) is { } p)
+                pending.Add($"still to be written at line {text.AsSpan(0, b.Start).Count('\n') + 1}: pending{(p.Name.Length > 0 ? " " + p.Name : "")}{(p.Intent.Length > 0 ? ", " + p.Intent.ReplaceLineEndings(" ") : "")}");
             else if (b.Kind == BlockKind.Code && Bib.IsBib(src))
             {
                 sources.Add(Bib.Body(src));
                 starts.Add(text.AsSpan(0, b.Start).Count('\n') + 1);
             }
         }
-        if (sources.Count == 0) { output.Add($"{name}: no bib blocks"); return (output, 0); }
+        if (sources.Count == 0)
+        {
+            output.AddRange(pending.Select(p => $"{name}: warning: {p}"));
+            output.Add($"{name}: no bib blocks");
+            return (output, 0);
+        }
 
         int errors = 0, warnings = 0;
         void Error(string message) { errors++; output.Add($"{name}: error: {message}"); }
@@ -49,6 +57,8 @@ public static class Check
                 m => $" at line {starts[k] + int.Parse(m.Groups[1].Value)}:{m.Groups[2].Value}")
             + $" (block {k + 1}, from line {starts[k]})";
 
+        foreach (var p in pending) Warn(p);
+
         var data = DocSession.DataFrom(front, dataBlocks, out var dataError);
         if (dataError is not null) Error("data: " + dataError);
 
@@ -57,6 +67,11 @@ public static class Check
         for (int k = 0; k < sources.Count; k++)
             if (frame.Errors[k] is { } e) Error(At(k, e.Message));
         foreach (var w in frame.Warnings.Distinct()) Warn(w);
+        // Inputs moved can cost more than their defaults: a run close to the budget is a warning.
+        if (frame.Steps > Budget.Limit * 0.8)
+            Warn($"the first run takes {Count(frame.Steps)} of {Count(Budget.Limit)} steps; moving an input may run out (precompute in data:, or sample fewer points)");
+        if (frame.Size > Budget.SizeLimit * 0.8)
+            Warn($"the first run builds and goes through {Count(frame.Size)} of {Count(Budget.SizeLimit)} values; moving an input may run out (build lists once, not again in a loop)");
 
         var nodes = frame.Blocks.SelectMany((ns, k) => All(ns).Select(n => (n, k))).ToList();
         // `dir: row` names the row widget, not the word: a function where a value goes draws as nothing.
@@ -87,10 +102,12 @@ public static class Check
         }
 
         output.Add(errors == 0
-            ? $"{name}: ok, {sources.Count} bib block(s){(warnings > 0 ? $", {warnings} warning(s)" : "")}"
+            ? $"{name}: ok, {sources.Count} bib block(s), {Count(frame.Steps)} steps, {Count(frame.Size)} values{(warnings > 0 ? $", {warnings} warning(s)" : "")}"
             : $"{name}: {errors} error(s), {warnings} warning(s)");
         return (output, errors);
     }
+
+    private static string Count(long n) => n.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
 
     private static IEnumerable<FrameNode> All(IEnumerable<FrameNode> nodes) =>
         nodes.SelectMany(n => All(n.Children).Prepend(n));

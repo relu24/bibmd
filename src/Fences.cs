@@ -14,6 +14,14 @@ public sealed partial class Bib
     public static bool IsData(string source) => Info(source) is { } info
         && info.Split(' ', StringSplitOptions.RemoveEmptyEntries) is ["bib", "data", ..];
 
+    /// <summary>
+    /// A fenced block whose info string is <c>pending</c>, or <c>pending NAME</c>: a placeholder for a part
+    /// still being written (an outline first, then each part filled in). Its name, and what is to go there.
+    /// </summary>
+    public static (string Name, string Intent)? Pending(string source) => Info(source) is { } info
+        && info.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries) is ["pending", ..] and var parts
+        ? (parts.Length > 1 ? parts[1].Trim() : "", Body(source).Trim()) : null;
+
     // A fence's info string, or null for anything that is not a fenced block.
     private static string? Info(string source)
     {

@@ -134,15 +134,17 @@ function base64(bytes) {
   return btoa(s);
 }
 
-// A link to Markdown opens here, in place; anything else in a new tab.
+// A link to Markdown opens here, in place; anything else in a new tab, once the app has asked
+// about any that is not a web page or a mail. A link that would run in this page is never followed.
 function navigate(link) {
   const base = current.base ?? location.href;
-  const url = new URL(link, base);
+  let url;
+  try { url = new URL(link, base); } catch { return; }
   if (/\.(md|markdown)$/i.test(url.pathname)) {
     const doc = url.origin === location.origin ? relative(url) : url.href;
     history.pushState(null, '', `?doc=${encodeURIComponent(doc)}${url.hash}`);
     openUrl(doc);
-  } else {
+  } else if (!['javascript:', 'data:', 'vbscript:', 'blob:'].includes(url.protocol)) {
     window.open(url.href, '_blank', 'noopener');
   }
 }

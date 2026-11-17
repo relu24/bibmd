@@ -37,6 +37,8 @@ public sealed class Host
         _runtime.SetTheme(App.ThemeFor(Window.Dark));
         _runtime.WakeUp = Window.Wake;
         _runtime.WindowClipboard = (Window.GetClipboardText, Window.SetClipboardText);
+        // A finger across a code block, a wide table or the section strip scrolls it; elsewhere it drags.
+        Window.ScrollsAcross = _runtime.ScrollsAcrossAt;
         _managed = new ManagedRenderer(Window.Cpu) { DamageTracking = true };
         App.LinkOpener = OpenLink;
         Window.OnAppearanceChanged = () => { if (_app is not null) _app.Dark = Window.Dark; };

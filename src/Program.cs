@@ -3,6 +3,7 @@
 //   md notes.md                          the window (Wayland, managed rasterizer)
 //   md notes.md --png out.png [--size 1000x760] [--scale 1.5] [--script "…"]
 //                                        headless: one frame to a PNG, no window
+//   md notes.md --png out.png --card    the same, as a link's preview: the document alone, read only
 //   md notes.md --check                  headless: each bib block's errors at their file lines,
 //                                        and what each button's click would do; exit 1 on an error
 //
@@ -132,8 +133,17 @@ int Headless(string png)
     float scale = scaleAt >= 0 ? float.Parse(args[scaleAt + 1], System.Globalization.CultureInfo.InvariantCulture) : 1f;
     var surface = new WindowFrame(WindowFrame.PhysicalSize(width, scale), WindowFrame.PhysicalSize(height, scale), scale, 60f);
     using var managed = new ManagedRenderer();
-    var images = new Images((w, h, px) => managed.CreateTexture(TextureFormat.RGBA8, TextureKind.Static, w, h, px), () => { });
+    // A card is drawn on a server, from a document anyone may have written: its images come only from
+    // the document's own folder, never a URL or a path out of it.
+    bool card = args.Contains("--card");
+    string folder = Path.GetDirectoryName(Path.GetFullPath(doc.Path))! + Path.DirectorySeparatorChar;
+    Func<string, Task<byte[]>>? read = !card ? null : source =>
+        !source.Contains("://") && Path.GetFullPath(source).StartsWith(folder, StringComparison.Ordinal)
+            ? File.ReadAllBytesAsync(Path.GetFullPath(source))
+            : throw new FileNotFoundException(source);
+    var images = new Images((w, h, px) => managed.CreateTexture(TextureFormat.RGBA8, TextureKind.Static, w, h, px), () => { }, read);
     var app = new App(runtime, doc, images);
+    if (card) { app.Bare = app.Card = true; app.Lock(); }
     string? clipboard = null;   // what a script copied
     runtime.ClipboardSet = text => clipboard = text;
     runtime.ClipboardGet = () => clipboard;

@@ -56,11 +56,14 @@ through its three panels, the arrows and `Enter` walk it, and `Esc` goes back to
   when, and how many characters went in and out. Click one to go back (or forward)
   to it; the later ones stay, marked *undone*, until the next change.
 - **Keys** — every shortcut, the ones for what you are doing first.
-- hey
 
-Images: PNG is decoded natively; JPEG, WebP, GIF, SVG… go through ImageMagick
-(`magick`). Paths are relative to the Markdown file; `http(s)` images are fetched.
+Images: PNG, JPEG and GIF, decoded in the app. Only images in the Markdown file's folder
+(or below it) are shown; an `http(s)` image waits until you press *Show it*, or *Show all*
+for every one in the document. Links to other Markdown files beside it, web pages and
+`mailto:` open at once; any other link asks first, showing where it goes.
 Fenced `mermaid` blocks (flowchart/graph, sequenceDiagram and stateDiagram) are drawn as diagrams; one it cannot read stays code.
+A fenced `pending` block (` ```pending NAME `, its body what goes there) is a placeholder for a part still
+being written, drawn as "To be written: …": an agent writes the outline first, then fills each in. `--check` lists those left.
 Links open with `xdg-open`, and a link to another `.md` file opens it in a new window.
 
 ## Live blocks
@@ -109,10 +112,10 @@ another).
 
 ## Build
 
-With bibdoc (github.com/relu24/bibdoc) checked out beside this folder, and bibui's
-integration branch (github.com/relu24/bibui) checked out beside it as `../bibui-bib-agent`
-(bibui 1.2 with changes not yet released, among them selectable Markdown text and input
-methods). `-p:BibuiSource=<checkout>` builds against another checkout.
+With bibdoc (github.com/relu24/bibdoc) checked out beside this folder, and bibui
+(github.com/relu24/bibui) checked out beside it as `../bibui-bibmd` (bibui 1.2 with changes not
+yet released, among them selectable Markdown text and input methods). The nuget.org release no
+longer has everything bibmd uses; `-p:BibuiSource=<checkout>` builds against another checkout.
 
     dotnet publish -c Release -o out
     ln -sf "$PWD/out/bibmd" ~/.local/bin/md
@@ -166,7 +169,7 @@ Hosted, the bar is the app's page's: the state goes out to it and its buttons co
 - Drop a Markdown file on the page to read it, with its images dropped beside it, or Ctrl+O.
 - Images are fetched beside the document and decoded by the browser (PNG, JPEG, WebP, GIF,
   SVG…); a link to another `.md` opens in place, Back returns, others open in a new tab.
-- It builds against bibui's integration branch, checked out as `../bibui-bib-agent`, whose
+- It builds against the bibui checkout `../bibui-bibmd`, whose
   `bibui-platform-browser/native/build.sh` must have run, with a .NET 10 SDK that has the
   wasm-tools workload (`DOTNET_ROOT`, by default `~/.dotnet-wasm`). About 14 MB, 2.5 MB with Brotli.
 

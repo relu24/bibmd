@@ -73,9 +73,9 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         if (_frame is null || !_ordinal.TryGetValue(index, out int k)) return false;
         _widgets[k] = [];
         var col = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
-        if (k == 0 && _program.DataError is { } de) Problem("Front matter: " + de);
+        if (k == 0 && _program.DataError is { } de) Problem("Front matter: " + de, width);
         DrawAll(_frame.Blocks[k], k, width);
-        if (_frame.Errors[k] is { } e) Problem(e.Message);
+        if (_frame.Errors[k] is { } e) Problem(e.Message, width);
         if (_program.Notices.TryGetValue(k, out var notice))
         {
             runtime.Gap(8f);
@@ -100,6 +100,8 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
     private ComponentSize Smaller => Sizes[Math.Max(0, _sizeIndex - 1)];
     private ComponentSize Larger => Sizes[Math.Min(Sizes.Length - 1, _sizeIndex + 1)];
     private float Gap => MathF.Round(runtime.FontInScope(Size0).Size * 0.6f);
+
+    private const float TabsPanelPad = 12f;   // bibui's Tabs.Panel pads its content so much on each side
 
     // The narrowest a grid's cell and a row's child are drawn: narrower, they go onto more lines.
     private const float MinCell = 120f, MinRowCell = 240f;
@@ -211,6 +213,28 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 var section = runtime.BeginParent(Section.Build(runtime, n.Text("title") ?? ""));
                 DrawAll(n.Children, k, width);
                 runtime.EndParent(section);
+                break;
+            }
+            case "plot":
+                Plot(n, width);
+                break;
+            case "bars":
+                Bars(n, width);
+                break;
+            case "tabs":
+            {
+                // The strip, then the panel holding the tab that shows: only its block ran. The label
+                // names the tabs (set and value read it), and is not drawn.
+                var tabs = n.Children.Where(c => c.Type == "tab").ToList();
+                var items = tabs.Select(t => new TabOption(t.Text("title") ?? "", t.Text("title") ?? "")).ToArray();
+                var strip = runtime.Tabs("bib-" + n.Key, items, Values.Str(n.Props.GetValueOrDefault("value")));
+                Claim(k, strip.Node);
+                if (strip.Picked is { } picked) Set(n, picked);
+                runtime.Gap(Tabs.PanelGap);
+                var panel = runtime.BeginParent(Tabs.Panel(runtime));
+                if (tabs.FirstOrDefault(t => Values.Truthy(t.Props.GetValueOrDefault("active"))) is { } shown)
+                    DrawAll(shown.Children, k, width - 2f * TabsPanelPad);
+                runtime.EndParent(panel);
                 break;
             }
             case "column":
@@ -362,6 +386,18 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 runtime.EndParent(row);
                 Claim(k, b.Node);
                 if (b.Clicked && n.Key is { } key) Click(k, key);
+                break;
+            }
+            case "choice" when n.Text("style") == "segmented":
+            {
+                // Side by side in one outline: the same input, drawn as a segmented control.
+                Caption(n);
+                var options = n.Props.GetValueOrDefault("options") as List<object?> ?? [];
+                var items = options.Select(o => new ToggleOption(Values.Str(o), Values.Str(o))).ToArray();
+                var group = runtime.ToggleGroup("bib-" + n.Key, items, Values.Str(n.Props.GetValueOrDefault("value")));
+                Claim(k, group.Node);
+                if (group.Picked is { } picked)
+                    Set(n, options.FirstOrDefault(o => Values.Str(o) == picked) ?? picked);
                 break;
             }
             case "choice":
@@ -552,7 +588,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             case "text":
                 if (n.Text("width") == "fill") return null;
                 return MathF.Min(room, Text.Width(runtime, TextOf(n), runtime.FontInScope(TextSize(n.Props.GetValueOrDefault("size")), Face(n.Text("face")))) + 1f);
-            case "markdown" or "table" or "list" or "card" or "grid" or "steps" or "kv":
+            case "markdown" or "table" or "list" or "card" or "grid" or "steps" or "kv" or "tabs" or "plot" or "bars":
                 return null;
             default:
                 return Measure(n, room);
@@ -887,7 +923,8 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         runtime.Gap(4f);
     }
 
-    private void Problem(string message)
+    // What went wrong in a block, in a red box, wrapped at its width.
+    private void Problem(string message, float width)
     {
         runtime.Gap(6f);
         var box = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
@@ -895,19 +932,20 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         box.Style.CornerRadius = 6f;
         box.Style.BorderWidth = 1f;
         box.Style.BorderColor = UiColor.Destructive;
-        runtime.Text(message, Smaller, UiColor.Destructive, FontSlot.Mono);
+        Wrapped(message, width - 22f, Smaller, UiColor.Destructive, family: FontSlot.Mono);
         runtime.EndParent(box);
     }
 
     // Text wrapped at the width, in the size and colour given.
-    private void Wrapped(string text, float width, ComponentSize size, UiColor color, FontWeight weight = FontWeight.Regular)
+    private void Wrapped(string text, float width, ComponentSize size, UiColor color, FontWeight weight = FontWeight.Regular,
+        FontSlot? family = null)
     {
-        var font = runtime.FontInScope(size);
+        var font = runtime.FontInScope(size, family);
         foreach (var para in text.Split('\n'))
         {
             if (para.Length == 0) { runtime.Text(" ", size, color); continue; }
             foreach (var line in Text.Lines(runtime, para, font, MathF.Max(40f, width)))
-                runtime.Text(line.End > line.Start ? para.AsSpan(line.Start, line.End - line.Start) : " ", size, color, weight: weight);
+                runtime.Text(line.End > line.Start ? para.AsSpan(line.Start, line.End - line.Start) : " ", size, color, family, weight: weight);
         }
     }
 

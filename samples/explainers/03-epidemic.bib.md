@@ -8,7 +8,6 @@ data:
   ks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
   r0s: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]
   fs1: [0, 0.17613, 0.3137, 0.42297, 0.51101, 0.58281, 0.64198, 0.69119, 0.73243, 0.76724, 0.79681, 0.82206, 0.84374, 0.86242, 0.8786, 0.89264, 0.90489, 0.91559, 0.92497, 0.93322, 0.94048, 0.94689, 0.95255, 0.95757, 0.96203, 0.96598, 0.96951, 0.97264, 0.97544, 0.97794, 0.98017, 0.98217, 0.98396, 0.98556, 0.987, 0.98829, 0.98945, 0.99049, 0.99142, 0.99227, 0.99302, 0.9937, 0.99432, 0.99487, 0.99537, 0.99582, 0.99622, 0.99659, 0.99692, 0.99722, 0.99748]
-  pts: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75]
 ---
 ###### An interactive explainer
 
@@ -32,22 +31,6 @@ random number of people with that average (a Poisson draw), and the chain is
 followed for four generations.
 
 ```bib
-// a plot: the frame, and inside its layer the plot area runs from x 52 to w − 14 and y 14 to h − 30
-fn plot(H) {
-  box(width: fill, height: H, radius: 12, border: 1, background: "raised") { slot(0) }
-}
-// gridlines with their numbers on the left, tick names along the bottom
-fn axes(X, Y, ys, xs, right, bottom) {
-  for t in ys {
-    line(52, Y(t.v), right, Y(t.v), color: fade(muted, 0.15))
-    label(44, Y(t.v), t.t, size: 11, color: muted, align: end)
-  }
-  for t in xs { label(X(t.v), bottom - 14, t.t, size: 11, color: muted, align: center) }
-}
-// a curve through points, as short straight segments
-fn poly(xs, ys, color: accent, width: 2) {
-  for x in xs where index > 0 { line(xs[index - 1], ys[index - 1], x, ys[index], color: color, width: width) }
-}
 let ks = data.ks
 let R0 = 0
 let seed = state("seed", 1)
@@ -142,6 +125,7 @@ one day at a time (Heun's method, a careful version of "rate × one day").
 ```bib
 let D = slider("Infectious period D (days)", 3, 14, value: 7, step: 0.5)
 let days = data.days
+let day = [...days, 300]   // the days a run reaches: 0 to 300
 let simulate = (R, Dd, v, c, t0, len) => days.reduce((acc, d) => {
   let p = acc[acc.length - 1]
   let beta = R / Dd * (d >= t0 && d < t0 + len ? 1 - c : 1)
@@ -160,30 +144,12 @@ let basePeak = peakOf(base)
 let basePeakDay = base.findIndex(p => p.i == basePeak)
 let turnDay = base.findIndex(p => p.s < 1 / R0)
 
-let pct = [0, 0.25, 0.5, 0.75, 1].map(g => ({v: g, t: "{round(g * 100)}%"}))
-let dayTicks = [0, 50, 100, 150, 200, 250, 300].map(d => ({v: d, t: d == 0 ? "day 0" : str(d)}))
-plot(300) {
-  layer {
-    let X = d => 52 + (w - 66) * d / 300
-    let Y = v => 14 + (h - 44) * (1 - v)
-    axes(X, Y, pct, dayTicks, w - 14, h)
-    if R0 > 1 { line(52, Y(1 / R0), w - 14, Y(1 / R0), color: fade(accent, 0.45), width: 1) }
-    if turnDay > 0 {
-      line(X(turnDay), 14, X(turnDay), h - 30, color: fade(danger, 0.4), width: 1)
-      label(X(turnDay) + 6, 22, "peak, day {basePeakDay}", size: 12, color: danger)
-    }
-    let xs = data.pts.map(k => X(k * 4))
-    let pts = data.pts.map(k => base[k * 4])
-    poly(xs, pts.map(p => Y(p.s)), color: accent, width: 2.5)
-    poly(xs, pts.map(p => Y(p.r)), color: success, width: 2.5)
-    poly(xs, pts.map(p => Y(p.i)), color: danger, width: 3)
-  }
-}
-row(fit: true) {
-  badge("S susceptible", tone: accent)
-  badge("I infectious", tone: danger)
-  badge("R recovered", tone: success)
-  badge("S = 1/R₀", tone: muted)
+plot(x: [0, 300], y: [0, 100], height: 300, xLabel: "day", yLabel: "% of the city") {
+  series("S susceptible", day, base.map(p => p.s * 100), tone: accent, width: 2.5)
+  series("R recovered", day, base.map(p => p.r * 100), tone: success, width: 2.5)
+  series("I infectious", day, base.map(p => p.i * 100), tone: danger, width: 3)
+  if R0 > 1 { rule(y: 100 / R0, label: "S = 1/R₀", tone: accent) }
+  if turnDay > 0 { rule(x: turnDay, label: "peak, day {basePeakDay}", tone: danger) }
 }
 
 grid(columns: 4) {
@@ -230,40 +196,22 @@ let cap = BEDS / (N * 0.05)
 let over = flat.filter(p => p.i > cap).length
 let top = ceil(max([basePeak, cap * 1.3]) * N * 0.05 / 1000) * 1000 / (N * 0.05)   // a round number of beds
 
-let commas = n => n >= 1000 ? str(floor(n / 1000)) + "," + str(1000 + n % 1000).slice(1) : str(n)
-let bedTicks = [0, 0.25, 0.5, 0.75, 1].map(g => ({v: top * g, t: commas(round(top * g * N * 0.05))}))
-plot(300) {
-  layer {
-    let X = d => 52 + (w - 66) * d / 300
-    let Y = v => 14 + (h - 44) * (1 - v / top)
-    axes(X, Y, bedTicks, dayTicks, w - 14, h)
-    rect(X(t0), 14, X(min([t0 + len, 300])) - X(t0), h - 44, fill: fade(accent, 0.09))
-    label(X(t0) + 8, 24, "contacts −{round(c * 100)}%", size: 12, color: accent)
-    let xs = data.pts.map(k => X(k * 4))
-    let ys = data.pts.map(k => Y(min([flat[k * 4].i, top])))
-    let y0 = Y(0)
-    let dx = xs[1] - xs[0] + 0.5
-    for x in xs { rect(x, ys[index], dx, y0 - ys[index], fill: fade(danger, 0.14)) }
-    poly(xs, data.pts.map(k => Y(min([base[k * 4].i, top]))), color: fade(muted, 0.6), width: 2)
-    poly(xs, ys, color: danger, width: 3)
-    line(52, Y(cap), w - 14, Y(cap), color: warning, width: 2)
-    label(w - 18, Y(cap) - 10, "2,000 beds", size: 12, color: warning, align: end)
-  }
-}
-row(fit: true) {
-  badge("beds needed, with measures", tone: danger)
-  badge("left alone", tone: muted)
-  badge("2,000 beds", tone: warning)
-  badge("contacts cut", tone: accent)
+let beds = sim => sim.map(p => p.i * N * 0.05)
+plot(x: [0, 300], y: [0, top * N * 0.05], height: 300, xLabel: "day", yLabel: "hospital beds needed") {
+  series("left alone", day, beds(base).map(b => min([b, top * N * 0.05])), tone: muted, width: 2)
+  series("with measures", day, beds(flat), tone: danger, fill: true, width: 3)
+  rule(y: BEDS, label: "{fmt(BEDS)} beds", tone: warning)
+  rule(x: t0, label: "contacts −{round(c * 100)}%", tone: accent)
+  if t0 + len < 300 { rule(x: t0 + len, label: "measures end", tone: accent) }
 }
 grid(columns: 4) {
-  stat("Peak beds needed", round(flatPeak * N * 0.05), tone: flatPeak > cap ? danger : success)
+  stat("Peak beds needed", fmt(flatPeak * N * 0.05, 0), tone: flatPeak > cap ? danger : success)
   stat("Peak day", flatPeak < 0.001 ? "none" : str(flatPeakDay))
   stat("Days over capacity", over, tone: over > 0 ? danger : success)
   stat("Ever infected by day 300", round(flat[300].r * 100, 1), unit: "%")
 }
 row(fit: true) {
-  text("Left alone: peak {commas(round(basePeak * N * 0.05))} beds on day {basePeakDay}, {round(base[300].r * 100)}% infected.  ", size: sm, color: muted)
+  text("Left alone: peak {fmt(basePeak * N * 0.05, 0)} beds on day {basePeakDay}, {round(base[300].r * 100)}% infected.  ", size: sm, color: muted)
   if len < 300 && t0 + len < 300 && flatPeakDay > t0 + len { badge("second wave after the measures end", tone: warning) }
 }
 ```
@@ -298,29 +246,17 @@ let both = simulate(R0, D, v, c, t0, len)
 let fs1 = data.fs1   // the same curve for v = 0, worked out once
 let fsv = data.r0s.map(k => finalSize(1 + k / 10, 1 - v))
 
-plot(300) {
-  layer {
-    let X = R => 52 + (w - 66) * (R - 1) / 5
-    let Y = f => 14 + (h - 44) * (1 - f)
-    axes(X, Y, pct, [1, 2, 3, 4, 5, 6].map(r => ({v: r, t: r == 1 ? "R₀ = 1" : str(r)})), w - 14, h)
-    line(52, Y(v), w - 14, Y(v), color: fade(success, 0.7), width: 2)
-    let xs = data.r0s.map(k => X(1 + k / 10))
-    poly(xs, data.r0s.map(k => Y(1 - 1 / (1 + k / 10))), color: warning, width: 2)
-    poly(xs, fs1.map(Y), color: fade(muted, 0.5), width: 2)
-    poly(xs, fsv.map(Y), color: danger, width: 3)
-    if R0 >= 1 {
-      line(X(R0), 14, X(R0), h - 30, color: fade(ink, 0.2), width: 1)
-      if z > 0 { line(X(R0), Y(herd), X(R0), Y(z), color: fade(danger, 0.18), width: 6) }
-      circle(X(R0), Y(herd), 5, fill: warning)
-      circle(X(R0), Y(z), 7, fill: danger)
-    }
+let r0x = data.r0s.map(k => 1 + k / 10)
+plot(x: [1, 6], y: [0, 100], height: 300, xLabel: "R₀", yLabel: "% of the population") {
+  series("herd immunity threshold 1 − 1/R₀", r0x, r0x.map(r => (1 - 1 / r) * 100), tone: warning)
+  series("final size, nobody immune", r0x, fs1.map(f => f * 100), tone: muted)
+  series("final size with v immune", r0x, fsv.map(f => f * 100), tone: danger, width: 3)
+  rule(y: v * 100, label: "already immune: v", tone: success)
+  if R0 >= 1 {
+    rule(x: R0, tone: muted)
+    point(R0, herd * 100, label: "threshold {round(herd * 100)}%", tone: warning)
+    point(R0, z * 100, label: "reached {round(z * 100)}%", tone: danger)
   }
-}
-row(fit: true) {
-  badge("herd immunity threshold 1 − 1/R₀", tone: warning)
-  badge("final size, nobody immune", tone: muted)
-  badge("final size with v immune", tone: danger)
-  badge("already immune: v", tone: success)
 }
 
 grid(columns: 4) {
@@ -331,7 +267,7 @@ grid(columns: 4) {
 }
 kv([
   {label: "Overshoot", value: z > 0 ? "{round((v + z - herd) * 100, 1)} points past the threshold: infections that happen after the peak" : "none: the outbreak never takes off"},
-  {label: "Everything together", value: "with v = {round(v * 100)}% and contacts cut {round(c * 100)}% from day {t0}: peak {commas(round(peakOf(both) * N * 0.05))} beds, {round((both[300].r - v) * 100, 1)}% infected by day 300"},
+  {label: "Everything together", value: "with v = {round(v * 100)}% and contacts cut {round(c * 100)}% from day {t0}: peak {fmt(peakOf(both) * N * 0.05, 0)} beds, {round((both[300].r - v) * 100, 1)}% infected by day 300"},
 ])
 ```
 

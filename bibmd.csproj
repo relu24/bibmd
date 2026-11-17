@@ -43,12 +43,17 @@
     <EmbeddedResource Include="assets/fonts/*.ttf" LogicalName="%(Filename)%(Extension)" />
   </ItemGroup>
   <PropertyGroup>
-    <!-- bibui's integration branch (github.com/relu24/bibui), checked out beside this one as
-         ../bibui-bib-agent: bibui 1.2 and changes not yet released, among them Markdown text that can
-         be selected and copied. With no checkout there, the nuget.org release is used, without selection.
+    <!-- bibui (github.com/relu24/bibui), checked out beside this one as ../bibui-bibmd: bibui 1.2
+         and changes not yet released, among them Markdown text that can be selected and copied.
+         With no checkout there, the nuget.org release is tried, which no longer has everything
+         bibmd uses.
          -p:BibuiSource=<checkout> builds against another. -->
-    <BibuiSource Condition="'$(BibuiSource)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../bibui-bib-agent'))</BibuiSource>
+    <BibuiSource Condition="'$(BibuiSource)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../bibui-bibmd'))</BibuiSource>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- JPEG and GIF, decoded in this process: a C# port of stb_image (Unlicense OR MIT). -->
+    <PackageReference Include="StbImageSharp" Version="2.30.16" />
+  </ItemGroup>
   <ItemGroup Condition="Exists('$(BibuiSource)/bibui-core/bibui-core.csproj')">
     <ProjectReference Include="$(BibuiSource)/bibui-core/bibui-core.csproj" />
     <ProjectReference Include="$(BibuiSource)/bibui-platform-wayland/bibui-platform-wayland.csproj" />

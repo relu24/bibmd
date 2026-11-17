@@ -1,15 +1,17 @@
-using System.Diagnostics;
 using Bibui.Core.Draw;
 using Bibui.Core.Imaging;
+using StbImageSharp;
 
 namespace BibMd;
 
 /// <summary>
 /// Images the document points at, loaded off the UI thread: PNG with bibui's
-/// own decoder, anything else (JPEG, WebP, GIF, SVG…) through ImageMagick, a
-/// URL fetched first. Each is made into a texture once per size it is shown at,
-/// scaled down here with an area average so a large photo stays smooth.
-/// <paramref name="read"/> replaces the reading where there is no disk or ImageMagick (the browser).
+/// own decoder, JPEG and GIF (its first frame) with StbImageSharp, a C# port of
+/// stb_image; both in this process, nothing started for them. A URL is fetched
+/// first. Each is made into a texture once per size it is shown at, scaled down
+/// here with an area average so a large photo stays smooth. Which sources may be
+/// loaded at all is the app's to say (<see cref="App"/>).
+/// <paramref name="read"/> replaces the reading where there is no disk (the browser, which hands over PNG).
 /// </summary>
 public sealed class Images(Func<int, int, byte[], TextureHandle> makeTexture, Action wake, Func<string, Task<byte[]>>? read = null)
 {
@@ -19,6 +21,9 @@ public sealed class Images(Func<int, int, byte[], TextureHandle> makeTexture, Ac
         public volatile string? Error;
         public readonly Dictionary<(int, int), TextureHandle> Textures = [];
     }
+
+    /// <summary>Larger than this many pixels is not decoded: a few kilobytes can claim gigabytes of pixels.</summary>
+    public const long MaxPixels = 40_000_000;
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private readonly Dictionary<string, Entry> _entries = [];
@@ -49,7 +54,7 @@ public sealed class Images(Func<int, int, byte[], TextureHandle> makeTexture, Ac
             byte[] bytes = read is not null ? await read(source)
                 : source.StartsWith("http://") || source.StartsWith("https://") ? await Http.GetByteArrayAsync(source)
                 : File.ReadAllBytes(source);
-            entry.Image = Png.Decode(Png.IsPng(bytes) || OperatingSystem.IsBrowser() ? bytes : Convert(bytes));
+            entry.Image = Decode(bytes);
         }
         catch (Exception e)
         {
@@ -58,24 +63,26 @@ public sealed class Images(Func<int, int, byte[], TextureHandle> makeTexture, Ac
         wake();
     }
 
-    // Anything that is not a PNG becomes one through ImageMagick.
-    [System.Runtime.Versioning.UnsupportedOSPlatform("browser")]
-    private static byte[] Convert(byte[] bytes)
+    private static RgbaImage Decode(byte[] bytes)
     {
-        var psi = new ProcessStartInfo("magick", ["-", "-auto-orient", "-background", "none", "png:-"])
+        if (Png.IsPng(bytes))
         {
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        using var p = Process.Start(psi) ?? throw new InvalidOperationException("magick did not start");
-        var writer = Task.Run(() => { p.StandardInput.BaseStream.Write(bytes); p.StandardInput.Close(); });
-        using var output = new MemoryStream();
-        p.StandardOutput.BaseStream.CopyTo(output);
-        writer.Wait();
-        p.WaitForExit();
-        if (p.ExitCode != 0) throw new InvalidOperationException("unsupported image format");
-        return output.ToArray();
+            // IHDR comes first, its width and height 16 bytes in.
+            if (bytes.Length >= 24) Fits((uint)(bytes[16] << 24 | bytes[17] << 16 | bytes[18] << 8 | bytes[19]),
+                (uint)(bytes[20] << 24 | bytes[21] << 16 | bytes[22] << 8 | bytes[23]));
+            return Png.Decode(bytes);
+        }
+        ImageInfo info;
+        try { info = ImageInfo.FromStream(new MemoryStream(bytes)) ?? throw new InvalidDataException(); }
+        catch (Exception) { throw new InvalidDataException("not a PNG, JPEG or GIF image"); }
+        Fits((uint)info.Width, (uint)info.Height);
+        var image = ImageResult.FromMemory(bytes, ColorComponents.RedGreenBlueAlpha);
+        return new RgbaImage(image.Data, image.Width, image.Height, image.Width * 4, AlphaMode.Straight);
+    }
+
+    private static void Fits(uint width, uint height)
+    {
+        if ((long)width * height > MaxPixels) throw new InvalidDataException($"{width}×{height} is too large to draw");
     }
 
     // An area average from the source to width × height, straight RGBA.

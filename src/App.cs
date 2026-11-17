@@ -242,8 +242,10 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         runtime.EndParent(pane);
         runtime.EndParent(main);
 
+        if (Card) CardMark(page);
         if (!Bare) StatusLine();
         if (_inserting && !Bare) InsertMenu();
+        AskLink();
         runtime.EndParent(root);
         if (_reveal) Reveal(page);
         else if (Editing || _bib.HasFocus) FollowCaret(page);
@@ -346,6 +348,7 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         if (_sourceView) SourceView(source, width);
         else if (b.Kind == BlockKind.Image) ImageView(source, width);
         else if (b.Kind == BlockKind.FrontMatter) fold = FrontMatter(source);
+        else if (b.Kind == BlockKind.Code && Bib.Pending(source) is { } pending) PendingView(pending.Intent, MathF.Min(width, MaxColumn - 2f * PadX));
         else if (b.Kind == BlockKind.Code && _bib.View(i, width)) live = true;
         else if (b.Kind == BlockKind.Heading && Blocks.HeadingOf(source) is { Level: 1 or 6 } h) Heading(h.Level, h.Text, width);
         // A wide page reads as a page: its sections' headings without the rule under them.
@@ -530,6 +533,22 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
 
     // The front matter, folded to one line (its title and what it holds) until it is unfolded.
     // Returns that line, which folds and unfolds it when pressed.
+    // A part still to be written: what is to go there, quiet, until it is filled in.
+    private void PendingView(string intent, float width)
+    {
+        var box = runtime.BeginParent(runtime.Row().Sized(Size.Px(width), Size.Fit));
+        box.Style.Padding = EdgeInsets.Symmetric(horizontal: 12f, vertical: 10f);
+        box.Style.CornerRadius = 6f;
+        box.Style.BorderColor = UiColor.Border;
+        box.Style.BorderWidth = 1f;
+        box.Style.BackgroundColor = UiColor.SurfaceRaised.WithAlpha(0.35f);
+        runtime.Icon("sparkles", 14f).Color = UiColor.TextDisabled;
+        runtime.Gap(8f);
+        // Wrapped: an intent may be a sentence or two.
+        runtime.RichText(intent.Length == 0 ? "To be written" : "To be written: " + intent.ReplaceLineEndings(" "), [], ComponentSize.Sm, UiColor.TextSecondary).Sized(Size.Fill);
+        runtime.EndParent(box);
+    }
+
     private Box FrontMatter(string source)
     {
         var box = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
@@ -575,21 +594,55 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         return "Front matter";
     }
 
+    // The web images the reader asked to see, one by one or all at once. A document someone sent
+    // shows its own files by itself, and nothing else: a web image would tell its sender when it
+    // is opened, and a path out of its folder would put the reader's files on screen.
+    private readonly HashSet<string> _webImages = [];
+    private bool _allWebImages;
+
+    private static bool IsWeb(string src) =>
+        src.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || src.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+    // The document's web images not shown yet, each once.
+    private int WebImagesWaiting() => doc.Blocks.Where(b => b.Kind == BlockKind.Image)
+        .Select(b => Blocks.ImageOf(doc.Source(b)).Src).Where(IsWeb).Distinct().Count(src => !_webImages.Contains(src));
+
     private void ImageView(string source, float width)
     {
         var (alt, src) = Blocks.ImageOf(source);
-        string path = src.Contains("://") ? src : Path.Combine(Path.GetDirectoryName(doc.Path)!, src);
+        string path = src;
+        if (IsWeb(src))
+        {
+            if (!_allWebImages && !_webImages.Contains(src))
+            {
+                string host = Uri.TryCreate(src, UriKind.Absolute, out var uri) ? uri.Host : src;
+                var box = ImagePlaceholder(Card ? $"An image from {host}, not loaded" : $"An image from {host}");
+                if (!Card)
+                {
+                    runtime.Gap(8f);
+                    var buttons = runtime.BeginParent(runtime.Row());
+                    if (runtime.Button("web-image-" + src, "Show it", ghost: true).Clicked) _webImages.Add(src);
+                    int waiting = WebImagesWaiting();
+                    if (waiting > 1)
+                    {
+                        runtime.Gap(8f);
+                        if (runtime.Button("web-images-all-" + src, $"Show all {waiting} from the web", ghost: true).Clicked) _allWebImages = true;
+                    }
+                    runtime.EndParent(buttons);
+                }
+                runtime.EndParent(box);
+                return;
+            }
+        }
+        else if (src.Contains("://") || !InFolder(src, out path))
+        {
+            runtime.EndParent(ImagePlaceholder($"Image {src}: only images in the document's folder are shown"));
+            return;
+        }
         var (image, error) = images.Get(path);
         if (image is null)
         {
-            string what = error is null ? "Loading " + src + "…" : "Image " + src + ": " + error;
-            var ph = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
-            ph.Style.Padding = EdgeInsets.All(16f);
-            ph.Style.CornerRadius = 8f;
-            ph.Style.BorderColor = UiColor.Border;
-            ph.Style.BorderWidth = 1f;
-            runtime.Text(what, ComponentSize.Sm, UiColor.TextSecondary);
-            runtime.EndParent(ph);
+            runtime.EndParent(ImagePlaceholder(error is null ? "Loading " + src + "…" : "Image " + src + ": " + error));
             return;
         }
         float scale = runtime.ScaleFactor;
@@ -606,18 +659,89 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         }
     }
 
-    private static void OpenLink(string link)
+    // A bordered box with a line of text, left open for what goes under it.
+    private Box ImagePlaceholder(string text)
+    {
+        var ph = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
+        ph.Style.Padding = EdgeInsets.All(16f);
+        ph.Style.CornerRadius = 8f;
+        ph.Style.BorderColor = UiColor.Border;
+        ph.Style.BorderWidth = 1f;
+        runtime.Text(text, ComponentSize.Sm, UiColor.TextSecondary);
+        return ph;
+    }
+
+    // An image's path, if it is in the document's folder or below it; a link that leads out of
+    // the folder is out of it.
+    private bool InFolder(string src, out string path)
+    {
+        string dir = Path.GetDirectoryName(Path.GetFullPath(doc.Path))!;
+        string folder = dir.EndsWith(Path.DirectorySeparatorChar) ? dir : dir + Path.DirectorySeparatorChar;
+        path = Path.GetFullPath(Path.Combine(dir, src));
+        if (!path.StartsWith(folder, StringComparison.Ordinal)) return false;
+        try
+        {
+            for (string? at = path; at is not null && at.Length > folder.Length; at = Path.GetDirectoryName(at))
+                if ((Directory.Exists(at) ? new DirectoryInfo(at) : (FileSystemInfo)new FileInfo(at)) is { LinkTarget: not null } link
+                    && link.ResolveLinkTarget(returnFinalTarget: true) is { } target
+                    && !Path.GetFullPath(target.FullName).StartsWith(folder, StringComparison.Ordinal))
+                    return false;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
+        return true;
+    }
+
+    // A link the reader can tell is harmless opens: a page in this document, another Markdown
+    // file beside it, a web page, a mail. Anything else (a file: link to a script or a .desktop
+    // file, an app's own scheme) could start a program, so it asks first, showing the link.
+    private string? _askLink;
+
+    private void OpenLink(string link)
+    {
+        if (link.StartsWith('#')) { Launch(link); return; }
+        string file = link.Split('#')[0];
+        bool markdown = !link.Contains(':') && !Path.IsPathRooted(file) && file.EndsWith(".md", StringComparison.OrdinalIgnoreCase);
+        if (markdown || IsWeb(link) || link.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)) Launch(link);
+        else if (!Card) _askLink = link;
+    }
+
+    private void AskLink()
+    {
+        float shown = runtime.Animate("ask-link", "open", _askLink is null ? 0f : 1f, runtime.Rate(18f));
+        if (shown <= 0f || _askLink is not { } link) return;
+        var dialog = Dialog.Begin(runtime, "ask-link", shown, width: 480f);
+        runtime.Text("Open this link?", ComponentSize.Lg);
+        runtime.Gap(8f);
+        // Its start and its end, where a long one says what it opens.
+        runtime.Text(link.Length > 60 ? link[..32] + "…" + link[^26..] : link, ComponentSize.Sm, UiColor.TextPrimary);
+        runtime.Gap(8f);
+        runtime.Text("Not a web page, a mail or a document beside this one.", ComponentSize.Sm, UiColor.TextSecondary);
+        runtime.Text("Your system picks what opens it, and that can be a program.", ComponentSize.Sm, UiColor.TextSecondary);
+        runtime.Gap(20f);
+        var actions = runtime.BeginParent(runtime.Row().Sized(Size.Fill));
+        runtime.Spacer(Size.Fill);
+        bool cancel = runtime.Button("ask-link-cancel", "Cancel", ghost: true).Clicked;
+        runtime.Gap(8f);
+        bool open = runtime.Button("ask-link-open", "Open").Clicked;
+        runtime.EndParent(actions);
+        cancel |= dialog.End().Dismissed;
+        if (open) Launch(link);
+        if (open || cancel) _askLink = null;
+    }
+
+    private static void Launch(string link)
     {
         if (LinkOpener is not null) { LinkOpener(link); return; }
         if (OperatingSystem.IsBrowser() || OperatingSystem.IsIOS() || OperatingSystem.IsMacCatalyst()) return;   // no process to start
+        if (link.StartsWith('#')) return;
         try
         {
             string file = link.Split('#')[0];
-            // A relative link to another Markdown file opens in a new window of this app.
-            if (!link.Contains("://") && file.EndsWith(".md", StringComparison.OrdinalIgnoreCase) && Environment.ProcessPath is { } self)
-                Process.Start(self, [file]);
-            else if (!link.StartsWith('#'))
-                Process.Start(new ProcessStartInfo("xdg-open", [link]) { UseShellExecute = false });
+            // Another Markdown file opens in a new window of this app; anything else goes to the desktop.
+            if (!link.Contains(':') && file.EndsWith(".md", StringComparison.OrdinalIgnoreCase) && Environment.ProcessPath is { } self)
+                Process.Start(self, [file.StartsWith('-') ? "./" + file : file]);
+            else
+                Process.Start(new ProcessStartInfo("xdg-open", [link.StartsWith('-') ? "./" + link : link]) { UseShellExecute = false });
         }
         catch { /* nothing to open it with */ }
     }
@@ -662,7 +786,9 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         if (runtime.TextInput is not { } input || _content is null || page.Extent.Y <= 0f) return;
         // Both from last frame's layout: the caret's place in the content, whatever the scroll.
         float top = input.Caret.Top - _content.Rect.Y, height = page.Extent.Y;
-        if ((top, height) == _caretSeen) return;
+        // Not to the bit: both rects carry the scroll, which float rounding does not cancel exactly, so
+        // far down a long block a scroll alone wobbles it a fraction of a pixel. A caret moves by lines.
+        if (MathF.Abs(top - _caretSeen.Top) < 0.5f && MathF.Abs(height - _caretSeen.Height) < 0.5f) return;
         _caretSeen = (top, height);
         const float Margin = 24f;
         float at = page.TargetViewOffset.Y, bottom = top + input.Caret.Height;
@@ -833,6 +959,13 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         bool swallowText = false, typed = false;
         foreach (var ev in runtime.UnconsumedEvents)
         {
+            // The link dialog has the keyboard while it is up: Escape is Cancel.
+            if (_askLink is not null)
+            {
+                if (ev.IsKeyDown && ev.Key == Key.Escape) _askLink = null;
+                ev.Eat();
+                continue;
+            }
             if (_inserting && (ev.Kind == BibUiEventKind.Text || ev.IsKeyDown)) { InsertMenuEvent(ev); continue; }
             if (ev.Kind == BibUiEventKind.Text)
             {
@@ -1097,7 +1230,8 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
 
     // A block the reading view leaves out: a bib data block. The source view shows every block.
     private bool Hidden(int i) =>
-        !_sourceView && i >= 0 && i < doc.Blocks.Count && doc.Blocks[i].Kind == BlockKind.Code && Bib.IsData(doc.Source(doc.Blocks[i]));
+        !_sourceView && i >= 0 && i < doc.Blocks.Count
+        && (doc.Blocks[i].Kind == BlockKind.Code && Bib.IsData(doc.Source(doc.Blocks[i])) || Card && doc.Blocks[i].Kind == BlockKind.FrontMatter);
 
     private void Select(int index, bool relative = false)
     {

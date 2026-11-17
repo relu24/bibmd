@@ -26,8 +26,8 @@
   </PropertyGroup>
   <PropertyGroup>
     <BibDocRoot Condition="'$(BibDocRoot)' == ''">$(MSBuildThisFileDirectory)../../bibdoc</BibDocRoot>
-    <!-- bibui as bibmd builds it (the integration checkout): bibui-platform-ios is not released. -->
-    <BibuiSource Condition="'$(BibuiSource)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../bibui-bib-agent'))</BibuiSource>
+    <!-- bibui as bibmd builds it (its own branch, bibmd): bibui-platform-ios is not released. -->
+    <BibuiSource Condition="'$(BibuiSource)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../bibui-bibmd'))</BibuiSource>
     <BibuiIosNativeDir>$(BibuiSource)/bibui-platform-ios/native/lib/</BibuiIosNativeDir>
   </PropertyGroup>
   <ItemGroup>
@@ -39,6 +39,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(BibDocRoot)/src/BibDoc/BibDoc.csproj" />
+    <PackageReference Include="StbImageSharp" Version="2.30.16" />
     <ProjectReference Include="$(BibuiSource)/bibui-core/bibui-core.csproj" />
     <ProjectReference Include="$(BibuiSource)/bibui-platform-ios/bibui-platform-ios.csproj" />
     <ProjectReference Include="$(BibuiSource)/bibui-raster-managed/backend/Bibui.Raster.Managed.Backend.csproj" />
