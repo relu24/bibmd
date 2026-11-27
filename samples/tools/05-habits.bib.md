@@ -55,11 +55,22 @@ text("Today: {fmtDate(today(), "dddd D MMMM YYYY")}", color: muted)
 
 ```bib
 // ── a year per habit: a month a group of week columns (a week goes with the month of its
-// Sunday), Mon/Wed/Fri beside. The months wrap, so a narrow column shows the year in lines.
+// Sunday), Mon/Wed/Fri beside. The year is 1, 2, 3 or 4 lines of months, and a day's square is
+// as big as fills the card's width (page.width less its padding) with the line of most weeks.
 let weeks = range(weekOf(ndays - 1) + 1)
 let monthOfWeek = wk => dateParts(addDays(start, min([wk * 7 + 6 - pad, ndays - 1]))).month - 1
 let weekMonth = weeks.map(monthOfWeek)
 let monthWeeks = range(12).map(m => weeks.filter(wk => weekMonth[wk] == m))
+let LABEL = 27            // the weekday names
+let MGAP = 8              // between months
+let G = 3                 // between squares
+let inner = page.width - 30                       // the card's padding and border
+let linesOf = n => range(12 / n).map(l => range(l * n, l * n + n))
+let mostWeeks = n => max(linesOf(n).map(ms => sum(ms.map(m => monthWeeks[m].length))))
+// n months a line, each of w weeks: LABEL + n gaps + w squares and the gaps between them
+let squareFor = n => floor((inner - LABEL - MGAP * n + G * n) / mostWeeks(n)) - G
+let perLine = [12, 6, 4, 3].find(n => squareFor(n) >= 11) ?? 3
+let S = min([22, max([9, squareFor(perLine)])])
 for hb in habits {
   let hi = index
   let done = hb.days.split("")
@@ -76,28 +87,32 @@ for hb in habits {
       }
       if button("×", style: ghost, id: "remove-{hi}").clicked { set("habits", habits.filter((x, j) => j != hi)) }
     }
-    box(dir: "row", wrap: true, gap: 8) {
-      box(width: 27, gap: 3) {
-        box(height: 16)
-        for wd in ["Mon", "", "Wed", "", "Fri", "", ""] { box(height: 13) { text(wd, size: 10, color: muted) } }
-      }
-      for m in range(12) {
-        box(gap: 3) {
-          box(height: 16) { text(fmtDate(date(data.year, m + 1, 1), "MMM"), size: 11, color: muted) }
-          box(dir: "row", gap: 3) {
-            for wk in monthWeeks[m] {
-              box(gap: 3) {
-                for r in range(7) {
-                  let d = wk * 7 + r - pad
-                  if d < 0 || d >= ndays { box(width: 13, height: 13) }
-                  else {
-                    let on = done[d] == "1"
-                    let c = box(id: "day-{hi}-{d}", width: 13, height: 13, radius: 3,
-                      background: d > T ? null : on ? hb.color : fade(muted, 0.16),
-                      border: d > T || d == T ? 1 : 0, borderColor: d == T ? ink : border,
-                      hover: {borderColor: ink},
-                      tip: "{dayName[d]} · {hb.name}: {d > T ? "in the future" : on ? "done" : "not done"}")
-                    if c.clicked && d <= T { set("habits", habits.map((x, j) => j == hi ? {...x, days: flip(x.days, d)} : x)) }
+    box(gap: 12) {
+      for months in linesOf(perLine) {
+        box(dir: "row", gap: MGAP) {
+          box(width: LABEL, gap: G) {
+            box(height: 16)
+            for wd in ["Mon", "", "Wed", "", "Fri", "", ""] { box(height: S) { text(wd, size: 10, color: muted) } }
+          }
+          for m in months {
+            box(gap: G) {
+              box(height: 16) { text(fmtDate(date(data.year, m + 1, 1), "MMM"), size: 11, color: muted) }
+              box(dir: "row", gap: G) {
+                for wk in monthWeeks[m] {
+                  box(gap: G) {
+                    for r in range(7) {
+                      let d = wk * 7 + r - pad
+                      if d < 0 || d >= ndays { box(width: S, height: S) }
+                      else {
+                        let on = done[d] == "1"
+                        let c = box(id: "day-{hi}-{d}", width: S, height: S, radius: round(S / 4),
+                          background: d > T ? null : on ? hb.color : fade(muted, 0.16),
+                          border: d > T || d == T ? 1 : 0, borderColor: d == T ? ink : border,
+                          hover: {borderColor: ink},
+                          tip: "{dayName[d]} · {hb.name}: {d > T ? "in the future" : on ? "done" : "not done"}")
+                        if c.clicked && d <= T { set("habits", habits.map((x, j) => j == hi ? {...x, days: flip(x.days, d)} : x)) }
+                      }
+                    }
                   }
                 }
               }

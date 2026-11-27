@@ -235,7 +235,7 @@ card("Orders", subtitle: "{shown.length} orders match") {
 }
 
 // a filter that changes the list sends the table back to its first page
-let st = {sort: t?.sort, desc: t?.desc ?? false}
+let st = {sort: t?.column, desc: t?.desc ?? false}   // the sort by its head, so it stays on its column at another width
 if changed("Search") || changed("Segment") || changed("From month") || changed("To month") { set("orders", {...st, page: 1}) }
 if t != null && key("left").pressed && t.page > 1 { set("orders", {...st, page: t.page - 1}) }
 if t != null && key("right").pressed && t.page < t.pages { set("orders", {...st, page: t.page + 1}) }

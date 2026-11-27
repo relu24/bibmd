@@ -1,6 +1,6 @@
 pkgbase = bibmd-bin
 	pkgdesc = A zen Markdown reader that edits a block in place when it is clicked (Wayland)
-	pkgver = 0.1.8
+	pkgver = 0.1.9
 	pkgrel = 1
 	url = https://github.com/relu24/bibmd-releases
 	arch = x86_64
@@ -17,7 +17,7 @@ pkgbase = bibmd-bin
 	conflicts = bibmd
 	options = !strip
 	options = !debug
-	source = bibmd-0.1.8-x86_64.tar.gz::https://github.com/relu24/bibmd-releases/releases/download/v0.1.8/bibmd-0.1.8-x86_64.tar.gz
-	sha256sums = db7dd09a987c9d8768d3b7253b7797a91585243e5f9350bc569108c377fed36b
+	source = bibmd-0.1.9-x86_64.tar.gz::https://github.com/relu24/bibmd-releases/releases/download/v0.1.9/bibmd-0.1.9-x86_64.tar.gz
+	sha256sums = 1f135928fbb166cb7bfb1c8d7cea4abcf8876ebd9f44c516bf80d9ca13241a6a
 
 pkgname = bibmd-bin

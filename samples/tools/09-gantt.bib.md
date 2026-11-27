@@ -84,11 +84,22 @@ grid(columns: 4) {
 // ---------- the chart: weeks across, a row per task; the bars are boxes, so they can be dragged ----------
 let weeks = ceil((finishOff + 4) / 7) + 1
 let days = weeks * 7
-// The bars are boxes, so the chart has a size in px: as wide as the block is drawn (page.width),
-// the task names narrower in a narrow column.
-let LEFT = page.width >= 900 ? 210 : page.width >= 520 ? 150 : 110
+// The bars are boxes, so the chart has a size in px: as wide as the block is drawn (page.width).
+// The names' column is as wide as the widest name in the reader's font (measureText), but no more
+// than a third of the chart; a name that does not fit wraps, and its row grows to hold it.
 let ROW = 34
 let TOP = 46
+let phone = page.width < 520                      // the name alone, smaller; the owner is in its tip
+let PADX = phone ? 8 : 12
+let nameSize = phone ? 11 : sm
+let nameOf = t => measureText(t.name, size: nameSize, weight: t.slack == 0 ? bold : regular)
+let LEFT = min([round(page.width * (phone ? 0.3 : 0.32)), max([phone ? 100 : 130, ...plan.map(t => nameOf(t).width)]) + 2 * PADX + 2])
+let TEXTW = LEFT - 2 * PADX
+let textH = t => measureText(t.name, size: nameSize, weight: t.slack == 0 ? bold : regular, width: TEXTW).height
+  + (phone ? 0 : measureText(t.owner, size: 11, width: TEXTW).height)
+let rowH = plan.map(t => max([ROW, textH(t) + 6]))
+let tops = rowH.reduce((acc, h) => [...acc, acc[acc.length - 1] + h], [TOP])   // where each row starts; the last, where they end
+let mid = i => tops[i] + rowH[i] / 2
 let DW = round((page.width - LEFT - 12) / days, 2)   // px a calendar day
 let showDate = DW * 7 >= 52                    // a week wide enough to write its date in
 let X = o => LEFT + DW * o
@@ -125,7 +136,7 @@ fn grab(t, resize) {
 
 box(width: LEFT + DW * days + 10, radius: 12, border: 1, background: raised) {
   layer {
-    let H = TOP + plan.length * ROW + 4
+    let H = tops[plan.length] + 4
     // weekends and holidays
     for o in range(days) where weekday(dateAt(o)) >= 6 || skip.includes(dateAt(o)) {
       rect(X(o), TOP - 6, DW, H - TOP, fill: skip.includes(dateAt(o)) ? fade(warning, 0.16) : fade(muted, 0.08))
@@ -137,27 +148,27 @@ box(width: LEFT + DW * days + 10, radius: 12, border: 1, background: raised) {
       if showDate || wk % 2 == 0 { label(X(wk * 7) + 6, 31, short(wk * 7), size: 11, color: muted) }
     }
     // the selected row
-    if sel != null && rowOf(sel) >= 0 { rect(0, TOP + rowOf(sel) * ROW, w, ROW, fill: fade(accent, 0.08)) }
+    if sel != null && rowOf(sel) >= 0 { rect(0, tops[rowOf(sel)], w, rowH[rowOf(sel)], fill: fade(accent, 0.08)) }
     // arrows: the end of a dependency to the start of what waits for it, as an elbow
     for t in plan {
       for d in t.deps {
         let a = plan[rowOf(d)]
         let isCrit = a.slack == 0 && t.slack == 0 && a.ef == t.es
         let x1 = a.dur == 0 ? X(calOf(a.es) + 0.5) + 8 : X(calOf(a.ef - 1) + 1)
-        let y1 = TOP + rowOf(d) * ROW + ROW / 2
+        let y1 = mid(rowOf(d))
         let x2 = t.dur == 0 ? X(calOf(t.es) + 0.5) - 9 : X(calOf(t.es))
-        let y2 = TOP + rowOf(t.id) * ROW + ROW / 2
+        let y2 = mid(rowOf(t.id))
         path([[x1, y1], [x1 + 6, y1], [x1 + 6, y2], [x2, y2]], color: isCrit ? danger : fade(muted, 0.7),
           width: isCrit ? 1.8 : 1.2, arrow: "end")
       }
     }
     // slack whiskers and milestone dates
     for t in plan {
-      let y = TOP + index * ROW
+      let y = mid(index)
       if t.dur > 0 && t.slack > 0 {
-        rect(X(calOf(t.ef - 1) + 1), y + ROW / 2 - 1, X(calOf(t.lf - 1) + 1) - X(calOf(t.ef - 1) + 1), 2, fill: fade(muted, 0.5))
+        rect(X(calOf(t.ef - 1) + 1), y - 1, X(calOf(t.lf - 1) + 1) - X(calOf(t.ef - 1) + 1), 2, fill: fade(muted, 0.5))
       }
-      if t.dur == 0 { label(X(calOf(t.es) + 0.5) + 14, y + ROW / 2, short(calOf(t.es)), size: 11, color: muted) }
+      if t.dur == 0 { label(X(calOf(t.es) + 0.5) + 14, y, short(calOf(t.es)), size: 11, color: muted) }
     }
     // today, dashed
     line(X(todayOff + 0.5), TOP - 10, X(todayOff + 0.5), H, color: warning, width: 2, dash: [4, 3])
@@ -166,21 +177,19 @@ box(width: LEFT + DW * days + 10, radius: 12, border: 1, background: raised) {
   box(height: TOP)
   for t in plan {
     let tone = t.slack == 0 ? danger : accent
+    let RH = rowH[index]
+    let dy = (RH - ROW) / 2          // the bar in the middle of a row that grew for its name
     // the bars are as tall as the row and drawn in its middle: align: center does not centre a row's children across
-    box(dir: "row", height: ROW) {
-      box(width: LEFT, padding: [1, LEFT < 150 ? 8 : 12]) {
-        // in a phone's column the name has two lines of its own and the owner is in its tip
-        if LEFT < 150 { text(t.name, size: 11, weight: t.slack == 0 ? bold : regular, color: ink) }
-        else {
-          text(t.name, size: sm, weight: t.slack == 0 ? bold : regular, color: ink, wrap: false)
-          text(t.owner, size: 11, color: muted, wrap: false)
-        }
+    box(dir: "row", height: RH) {
+      box(width: LEFT, padding: [max([1, (RH - textH(t)) / 2]), PADX]) {
+        text(t.name, size: nameSize, weight: t.slack == 0 ? bold : regular, color: ink)
+        if !phone { text(t.owner, size: 11, color: muted) }
       }
       if t.dur == 0 {
         // a milestone: a diamond on its day
         box(width: X(calOf(t.es) + 0.5) - LEFT - 9)
-        let m = box(id: "bar-{t.id}", width: 18, height: ROW, tip: tipOf(t)) {
-          layer { path([[9, 8], [18, 17], [9, 26], [0, 17]], closed: true, fill: tone, color: sel == t.id ? ink : tone, width: 1.5) }
+        let m = box(id: "bar-{t.id}", width: 18, height: RH, tip: tipOf(t)) {
+          layer { path([[9, dy + 8], [18, dy + 17], [9, dy + 26], [0, dy + 17]], closed: true, fill: tone, color: sel == t.id ? ink : tone, width: 1.5) }
         }
         if m.pressed { grab(t, false) }
         if m.pressed && drag != null && m.dx != null { moved(t, m.dx, false) }
@@ -189,19 +198,19 @@ box(width: LEFT + DW * days + 10, radius: 12, border: 1, background: raised) {
         let s = calOf(t.es)
         let e = calOf(t.ef - 1) + 1
         box(width: X(s) - LEFT)
-        let g = box(id: "bar-{t.id}", dir: "row", width: X(e) - X(s), height: ROW, tip: tipOf(t)) {
+        let g = box(id: "bar-{t.id}", dir: "row", width: X(e) - X(s), height: RH, tip: tipOf(t)) {
           layer {
-            rect(0, 8, w, ROW - 16, fill: fade(tone, 0.22), radius: 5)
+            rect(0, dy + 8, w, ROW - 16, fill: fade(tone, 0.22), radius: 5)
             // a piece per run of working days, so weekends and holidays show as gaps in the bar
             for n in range(t.es, t.ef) where n == t.es || calOf(n) != calOf(n - 1) + 1 {
               let runEnd = range(n, t.ef).find(k => k == t.ef - 1 || calOf(k + 1) != calOf(k) + 1)
-              rect(DW * (calOf(n) - s) + 1, 9, DW * (calOf(runEnd) + 1 - calOf(n)) - 2, ROW - 18, fill: tone, radius: 4)
+              rect(DW * (calOf(n) - s) + 1, dy + 9, DW * (calOf(runEnd) + 1 - calOf(n)) - 2, ROW - 18, fill: tone, radius: 4)
             }
-            if sel == t.id { rect(0, 7, w, ROW - 14, color: ink, width: 2, radius: 6) }
+            if sel == t.id { rect(0, dy + 7, w, ROW - 14, color: ink, width: 2, radius: 6) }
           }
           box(width: fill)
           // the right end: drag it to change the length
-          let r = box(id: "end-{t.id}", width: 8, height: ROW, hover: {background: fade(ink, 0.2)})
+          let r = box(id: "end-{t.id}", width: 8, height: RH, hover: {background: fade(ink, 0.2)})
           if r.pressed { grab(t, true) }
           if r.pressed && drag != null && r.dx != null { moved(t, r.dx, true) }
           if r.released { set("drag", null) }

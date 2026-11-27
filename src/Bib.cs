@@ -79,7 +79,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 sources.Add(Body(doc.Source(b)));
             }
         }
-        _frame = _program.Frame(front, dataBlocks, sources, this, hovered, MathF.Floor(width));
+        _frame = _program.Frame(front, dataBlocks, sources, this, hovered, MathF.Floor(width), runtime.FontInScope(Size0).Size, MeasureText);
         if (_program.Renewed) _settling = SettleFrames;
         if (_frame is null) return;
         Ring(DateTimeOffset.Now);
@@ -740,7 +740,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         if (n.Props.GetValueOrDefault("wrap") is false) { runtime.Text(text, size, color, face, weight); return; }
         string align = n.Text("align") ?? (centred ? "center" : "start");
         bool placed = align is "center" or "end" or "right";
-        var font = runtime.FontInScope(size, face);
+        var font = FontOf(size, face, weight);   // wrapped in the weight it is drawn in, so a bold line keeps to the width
         width = MathF.Max(20f, width);
         var lines = runtime.BeginParent(runtime.Column().Sized(placed ? Size.Px(width) : Size.Fit, Size.Fit));
         foreach (var para in text.Split('\n'))
@@ -757,6 +757,37 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             }
         }
         runtime.EndParent(lines);
+    }
+
+    // measureText(): a text as TextNode draws it, at the width it wraps at (its lines, each a line of the
+    // face's height), or on one line, in its weight.
+    private TextMeasure.Result MeasureText(TextMeasure.Spec spec)
+    {
+        var font = FontOf(TextSize(spec.Size), Face(spec.Face), Weight(spec.Weight));
+        float lineHeight = runtime.Fonts.LineHeight(font);
+        int lines = 0;
+        float widest = 0f;
+        foreach (var para in spec.Text.Split('\n'))
+        {
+            if (spec.Width is not { } room || para.Length == 0)
+            {
+                lines++;
+                widest = MathF.Max(widest, para.Length == 0 ? 0f : Text.Width(runtime, para, font));
+                continue;
+            }
+            foreach (var line in Text.Lines(runtime, para, font, MathF.Max(20f, (float)room)))
+            {
+                lines++;
+                widest = MathF.Max(widest, Text.Width(runtime, para[line.Start..line.End], font));
+            }
+        }
+        return new TextMeasure.Result(MathF.Ceiling(widest), MathF.Ceiling(lines * lineHeight), lines);
+    }
+
+    // The font a text of this size, face and weight is drawn in.
+    private Bibui.Text.Font FontOf(FontSize size, FontSlot face, FontWeight weight)
+    {
+        using (runtime.FontFace(face, weight)) return runtime.FontInScope(size, face);
     }
 
     // How wide a node wants to be, or null for one that takes what is left (width: fill, prose).
@@ -1311,20 +1342,26 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         int page = st?.GetValueOrDefault("page") is double p ? (int)p : 1;
         int pages = n.Props.GetValueOrDefault("pages") is double ps ? (int)ps : 1;
         const float CellGap = 12f;   // room between a cell's text and the next column
-        Box? sideways = null;
+        Box? sideways = null, frame = null;
+        string scrollId = $"bib-tscroll-{n.Key ?? k + "-" + _ids++}";
         if (tableWidth > width)
         {
-            sideways = runtime.BoxFromId($"bib-tscroll-{n.Key ?? k + "-" + _ids++}");
+            // The box that scrolls, and over it, in a frame of the column's width, a fade at each edge with
+            // more beyond it and a thin bar under it (TableScrollHint).
+            frame = runtime.BeginParent(runtime.Column().Sized(Size.Px(width), Size.Fit));
+            sideways = runtime.BoxFromId(scrollId);
             bool wide = sideways.ContentSize.X > sideways.Extent.X + 0.5f;
-            sideways.Claims = InteractionKinds.Clip | (wide ? InteractionKinds.ViewScrollX | InteractionKinds.ClampX : InteractionKinds.None);
-            runtime.InteractionsFor(sideways);   // asking is what moves its view by the wheel
+            // The wheel scrolls it (Shift+wheel too), and so does a drag across it.
+            sideways.Claims = InteractionKinds.Clip | (wide ? InteractionKinds.ViewScrollX | InteractionKinds.ClampX | InteractionKinds.LeftPress : InteractionKinds.None);
             if (!wide) sideways.TargetViewOffset = sideways.ViewOffset = default;
+            else Claim(k, sideways);
             sideways.ChildLayoutAxis = LayoutAxis.Y;
             sideways.SizeX = SemanticSize.Pixels(width);
             sideways.SizeY = SemanticSize.ChildrenSum();
             sideways.AllowOverflowX = true;
             runtime.BeginParent(sideways);
         }
+        Interaction? headHeld = null;   // a head pressed or dragged this frame
         var table = runtime.BeginParent(runtime.Column().Sized(Size.Px(tableWidth)));
         // Each cell wraps at its column's width, so a row is as tall as its longest cell.
         void Row(List<object?> cells, bool head)
@@ -1345,7 +1382,11 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                     cell.Style.HoverBackgroundColor = UiColor.SurfaceRaised;
                     cell.Style.CornerRadius = 4f;
                     var ia = runtime.InteractionsFor(cell);
-                    if (ia.Clicked) Set(n, new Dictionary<string, object?> { ["sort"] = (double)i, ["desc"] = by == i && !desc, ["page"] = 1d });
+                    // Kept by the head, so it stays on this column when the document shows others (Interpreter.SortAndPage).
+                    // A head dragged across scrolls the table instead (below), and does not sort.
+                    if (ia.Pressed || ia.Dragging || ia.Released) headHeld = ia;
+                    if (ia.Clicked && MathF.Abs(ia.DragDeltaX) < 4f)
+                        Set(n, new Dictionary<string, object?> { ["sort"] = HeadOf(columns[i]), ["desc"] = by == i && !desc, ["page"] = 1d });
                     Claim(k, cell);
                     runtime.BeginParent(cell);
                 }
@@ -1411,7 +1452,23 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             runtime.InteractionsFor(body);   // asking is what moves its view by the wheel, before the page asks
         }
         runtime.EndParent(table);
-        if (sideways is not null) runtime.EndParent(sideways);
+        if (sideways is not null)
+        {
+            runtime.EndParent(sideways);
+            // Asked after its heads, so a press on a head sorts; asking is what moves its view by the wheel.
+            var held = runtime.InteractionsFor(sideways);
+            if (!held.Pressed && !held.Dragging && !held.Released && headHeld is { } head) held = head;
+            if (held.Pressed) _dragFrom[scrollId] = sideways.ViewOffset.X;
+            if ((held.Dragging || held.Released) && _dragFrom.TryGetValue(scrollId, out float from))
+            {
+                float range = MathF.Max(0f, sideways.ContentSize.X - sideways.Extent.X);
+                var to = sideways.ViewOffset with { X = Math.Clamp(from - held.DragDeltaX, 0f, range) };
+                sideways.TargetViewOffset = sideways.ViewOffset = to;   // under the pointer, not easing after it
+            }
+            if (held.Released) _dragFrom.Remove(scrollId);
+            TableScrollHint(sideways, scrollId, width);
+            runtime.EndParent(frame!);
+        }
         if (pages > 1)
         {
             // The pages: back, where it is, on; under the table, not scrolling with it.
@@ -1430,6 +1487,36 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 Set(n, new Dictionary<string, object?>(st!) { ["page"] = (double)(page + (next.Clicked ? 1 : -1)) });
         }
     }
+
+    // A table that scrolls sideways says so: a fade over the edge that has more beyond it (the left once it
+    // has scrolled, the right until its end), and a thin bar under it that a drag moves. Read off the view
+    // as it was last frame, as bibui's Scrollbar is.
+    private void TableScrollHint(Box view, string id, float width)
+    {
+        float range = view.ContentSize.X - view.Extent.X;
+        if (range <= 0.5f) return;
+        float height = view.Extent.Y, off = view.ViewOffset.X;
+        void Fade(float x, bool left)
+        {
+            var fade = runtime.Box();
+            fade.FloatingX = fade.FloatingY = true;
+            fade.FixedPosition = new Vector2(x, 0f);
+            fade.SizeX = SemanticSize.Pixels(TableFade);
+            fade.SizeY = SemanticSize.Pixels(height);
+            var (near, far) = (UiColor.Background.WithAlpha(0.92f), UiColor.Background.WithAlpha(0f));
+            fade.Style.BackgroundGradient = Gradient.Horizontal(new ColorStop(0f, left ? near : far), new ColorStop(1f, left ? far : near));
+        }
+        if (off > 0.5f) Fade(0f, left: true);
+        if (off < range - 0.5f) Fade(width - TableFade, left: false);
+        runtime.Scrollbar(id + "-bar", view, LayoutAxis.X);
+    }
+
+    private const float TableFade = 28f;
+    private readonly Dictionary<string, float> _dragFrom = [];   // a table's view across when a drag on it began
+
+    // A column's head as a table's sort names it: its text.
+    private static string HeadOf(object? column) =>
+        Values.Str(column is Dictionary<string, object?> r ? r.GetValueOrDefault("text") ?? r.GetValueOrDefault("label") : column);
 
     // A table's columns: shared in proportion to their weights, but none narrower than its longest word (and
     // MinColumn at least, ColumnCap at most), so a word is broken only when it is longer than that. When
@@ -1704,7 +1791,8 @@ public sealed class BibProgram
     /// data changed gets a new session, keeping the values the reader gave. Null with no bib blocks.
     /// Run again only when what it reads changed: a frame that scrolls the page draws the last run.
     /// </summary>
-    internal FrameResult? Frame(string? front, List<string> dataBlocks, List<string> sources, object place, HashSet<string> hovered, double width)
+    internal FrameResult? Frame(string? front, List<string> dataBlocks, List<string> sources, object place, HashSet<string> hovered, double width,
+        double fontSize, Func<TextMeasure.Spec, TextMeasure.Result> measure)
     {
         if (sources.Count == 0) { Session = null; _frame = null; return null; }
         string key = (front ?? "") + "\u0001" + string.Join("\u0002", dataBlocks) + "\u0001" + string.Join("\u0002", sources);
@@ -1727,6 +1815,9 @@ public sealed class BibProgram
         if (!all.SetEquals(Session.Host.Hovered)) { Session.Host.Hovered = all; _rerun = true; }
         // page.width in whole px, so a column that settles by a fraction does not run the program again.
         if (width != Session.Host.Width) { Session.Host.Width = width; _rerun = true; }
+        // page.fontSize, the reader's body size (Ctrl+= and Ctrl+-), and measureText() in the faces text() draws in.
+        if (fontSize != Session.Host.FontSize) { Session.Host.FontSize = fontSize; _rerun = true; }
+        Session.Host.MeasureText ??= measure;
         var now = DateTimeOffset.Now;
         if (_frame?.Every is { } every && (now - _ran).TotalSeconds >= every * 0.98) _rerun = true;
         if (_rerun || _frame is null)
