@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fernwood Goods: sales dashboard</title>
+<style>
+  :root {
+    --bg: #f3f4f6; --card: #ffffff; --ink: #111827; --muted: #6b7280; --faint: #9ca3af; --rule: #e5e7eb;
+    --accent: #2563eb; --up: #15803d; --down: #dc2626;
+    --North: #2563eb; --South: #d97706; --East: #0d9488; --West: #9333ea;
+    --shadow: 0 1px 2px rgba(17,24,39,.05), 0 8px 24px -16px rgba(17,24,39,.3);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0f14; --card: #151b23; --ink: #e5e7eb; --muted: #9ca3af; --faint: #6b7280; --rule: #263040;
+      --accent: #60a5fa; --up: #4ade80; --down: #f87171;
+      --North: #60a5fa; --South: #fbbf24; --East: #2dd4bf; --West: #c084fc;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.9);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); color: var(--ink); }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 28px 20px 64px; }
+  header { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; justify-content: space-between; }
+  h1 { font: 800 26px/1.1 system-ui, sans-serif; letter-spacing: -0.02em; margin: 0; }
+  .sub { color: var(--muted); margin-top: 4px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  select, input[type=search] { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 7px 10px; }
+  input[type=search] { width: 220px; }
+  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; background: var(--card); }
+  .seg button { font: inherit; border: 0; background: none; color: var(--muted); padding: 7px 12px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--rule); }
+  .seg button.on { background: var(--accent); color: #fff; }
+  .chip { display: inline-flex; gap: 6px; align-items: center; border-radius: 99px; padding: 4px 10px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 600; cursor: pointer; border: 0; font-size: 13px; }
+  .chip[hidden] { display: none; }
+  .grid { display: grid; gap: 14px; margin-top: 18px; }
+  .kpis { grid-template-columns: repeat(4, 1fr); }
+  .two { grid-template-columns: 1.4fr 1fr; }
+  @media (max-width: 860px) { .kpis { grid-template-columns: repeat(2, 1fr); } .two { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 16px; box-shadow: var(--shadow); position: relative; }
+  .card h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 10px; text-transform: uppercase; letter-spacing: .06em; }
+  .kpi .v { font: 800 28px/1.1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: -0.03em; }
+  .kpi .d { font-size: 13px; font-weight: 600; margin-top: 4px; }
+  .kpi .d.up { color: var(--up); } .kpi .d.down { color: var(--down); }
+  .kpi svg { position: absolute; right: 14px; bottom: 14px; width: 42%; height: 40px; }
+  svg { display: block; width: 100%; overflow: visible; }
+  svg text { font: 11px ui-monospace, Menlo, monospace; fill: var(--faint); }
+  .gridline { stroke: var(--rule); }
+  .tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--bg); padding: 7px 10px; border-radius: 8px; font-size: 12px; line-height: 1.4; opacity: 0; transition: opacity .12s; z-index: 10; white-space: nowrap; }
+  .tip.on { opacity: 1; }
+  .tip b { font-family: ui-monospace, Menlo, monospace; }
+  .bar { cursor: pointer; transition: opacity .2s; }
+  .bar:hover { opacity: .8; }
+  .dim { opacity: .25; }
+  .dot { transition: r .15s, opacity .2s; cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 8px; border-bottom: 1px solid var(--rule); cursor: pointer; user-select: none; white-space: nowrap; }
+  th:hover { color: var(--ink); }
+  th .arr { opacity: .3; margin-left: 4px; }
+  th.sorted { color: var(--accent); } th.sorted .arr { opacity: 1; }
+  td { padding: 8px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  td.n, th.n { text-align: right; font-family: ui-monospace, Menlo, monospace; }
+  tr:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .pill { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .pager { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; color: var(--muted); }
+  .pager button { font: inherit; border: 1px solid var(--rule); background: var(--card); color: var(--ink); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+  .pager button:disabled { opacity: .35; cursor: default; }
+  .pager .pages button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .empty { color: var(--muted); text-align: center; padding: 24px; }
+  .legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Fernwood Goods: sales 2026</h1>
+      <div class="sub">60 orders, 10 products, 4 regions. Click a region bar to filter everything; click again to clear.</div>
+    </div>
+    <div class="filters">
+      <label>From <select id="from"></select></label>
+      <label>to <select id="to"></select></label>
+      <div class="seg" id="segs"></div>
+      <input type="search" id="q" placeholder="Search product or order…">
+      <button class="chip" id="regionChip" hidden></button>
+    </div>
+  </header>
+
+  <section class="grid kpis" id="kpis"></section>
+
+  <section class="grid two">
+    <div class="card"><h2>Revenue by month</h2><svg id="line" viewBox="0 0 640 240" height="240"></svg></div>
+    <div class="card"><h2>Revenue by region</h2><svg id="bars" viewBox="0 0 420 240" height="240"></svg></div>
+  </section>
+
+  <section class="grid two">
+    <div class="card"><h2>Price vs units, one dot per order</h2><svg id="scatter" viewBox="0 0 640 260" height="260"></svg><div class="legend" id="legend"></div></div>
+    <div class="card"><h2>Top products</h2><div id="top"></div></div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Orders</h2>
+      <table><thead><tr id="head"></tr></thead><tbody id="rows"></tbody></table>
+      <div class="pager"><span id="count"></span><span class="pages" id="pages"></span></div>
+    </div>
+  </section>
+</main>
+<div class="tip" id="tip"></div>
+
+<script>
+const RAW = [
+  ["SO-1040","2026-02-03","North","Consumer","Atlas Standing Mat",99,6],
+  ["SO-1041","2026-02-07","North","Consumer","Pebble Speaker",159,5],
+  ["SO-1042","2026-02-17","South","Consumer","Harbor Backpack",129,8],
+  ["SO-1043","2026-02-28","East","Consumer","Quill Notebook Set",24,13],
+  ["SO-1044","2026-02-28","West","Consumer","Pebble Speaker",159,2],
+  ["SO-1045","2026-03-02","West","Business","Tandem Bike Light",39,12],
+  ["SO-1046","2026-03-14","South","Consumer","Pebble Speaker",159,14],
+  ["SO-1047","2026-03-16","East","Consumer","Nimbus Kettle",69,2],
+  ["SO-1048","2026-03-21","North","Consumer","Nimbus Kettle",69,8],
+  ["SO-1049","2026-03-24","South","Education","Tandem Bike Light",39,14],
+  ["SO-1050","2026-03-27","North","Education","Juniper Planter",34,14],
+  ["SO-1051","2026-03-28","North","Business","Harbor Backpack",129,12],
+  ["SO-1052","2026-04-26","South","Consumer","Tandem Bike Light",39,16],
+  ["SO-1053","2026-05-04","North","Education","Nimbus Kettle",69,9],
+  ["SO-1054","2026-05-09","West","Business","Harbor Backpack",129,14],
+  ["SO-1055","2026-05-10","South","Consumer","Atlas Standing Mat",99,3],
+  ["SO-1056","2026-05-17","South","Business","Atlas Standing Mat",99,10],
+  ["SO-1057","2026-05-17","South","Education","Pebble Speaker",159,8],
+  ["SO-1058","2026-05-19","North","Consumer","Pebble Speaker",159,10],
+  ["SO-1059","2026-05-24","West","Consumer","Harbor Backpack",129,3],
+  ["SO-1060","2026-05-27","West","Consumer","Quill Notebook Set",24,11],
+  ["SO-1061","2026-06-02","South","Consumer","Breeze Fan Mini",49,11],
+  ["SO-1062","2026-06-05","South","Business","Nimbus Kettle",69,18],
+  ["SO-1063","2026-06-08","East","Consumer","Atlas Standing Mat",99,1],
+  ["SO-1064","2026-06-16","South","Education","Juniper Planter",34,10],
+  ["SO-1065","2026-06-19","South","Consumer","Orbit Wall Clock",59,6],
+  ["SO-1066","2026-06-24","South","Consumer","Tandem Bike Light",39,3],
+  ["SO-1067","2026-07-07","East","Business","Pebble Speaker",159,15],
+  ["SO-1068","2026-07-08","South","Consumer","Quill Notebook Set",24,11],
+  ["SO-1069","2026-07-13","East","Consumer","Orbit Wall Clock",59,4],
+  ["SO-1070","2026-07-19","South","Education","Tandem Bike Light",39,6],
+  ["SO-1071","2026-08-01","North","Consumer","Breeze Fan Mini",49,12],
+  ["SO-1072","2026-08-05","East","Education","Atlas Standing Mat",99,6],
+  ["SO-1073","2026-08-06","South","Consumer","Orbit Wall Clock",59,5],
+  ["SO-1074","2026-08-10","North","Education","Atlas Standing Mat",99,4],
+  ["SO-1075","2026-08-15","East","Consumer","Tandem Bike Light",39,15],
+  ["SO-1076","2026-08-24","South","Education","Tandem Bike Light",39,9],
+  ["SO-1077","2026-08-27","East","Education","Breeze Fan Mini",49,3],
+  ["SO-1078","2026-09-01","East","Business","Lumen Desk Lamp",89,13],
+  ["SO-1079","2026-09-02","West","Business","Juniper Planter",34,14],
+  ["SO-1080","2026-09-03","East","Consumer","Juniper Planter",34,15],
+  ["SO-1081","2026-09-09","South","Consumer","Pebble Speaker",159,10],
+  ["SO-1082","2026-09-23","East","Education","Nimbus Kettle",69,8],
+  ["SO-1083","2026-09-25","East","Consumer","Quill Notebook Set",24,14],
+  ["SO-1084","2026-10-01","North","Consumer","Orbit Wall Clock",59,2],
+  ["SO-1085","2026-10-04","South","Business","Juniper Planter",34,20],
+  ["SO-1086","2026-10-05","West","Education","Pebble Speaker",159,4],
+  ["SO-1087","2026-10-17","North","Consumer","Nimbus Kettle",69,11],
+  ["SO-1088","2026-10-26","South","Business","Breeze Fan Mini",49,21],
+  ["SO-1089","2026-11-03","East","Consumer","Quill Notebook Set",24,16],
+  ["SO-1090","2026-11-08","North","Consumer","Harbor Backpack",129,5],
+  ["SO-1091","2026-11-25","East","Business","Harbor Backpack",129,13],
+  ["SO-1092","2026-12-04","East","Consumer","Atlas Standing Mat",99,1],
+  ["SO-1093","2026-12-08","North","Consumer","Breeze Fan Mini",49,8],
+  ["SO-1094","2026-12-11","East","Business","Tandem Bike Light",39,17],
+  ["SO-1095","2026-12-15","South","Consumer","Orbit Wall Clock",59,7],
+  ["SO-1096","2026-12-17","East","Consumer","Quill Notebook Set",24,14],
+  ["SO-1097","2026-12-20","East","Consumer","Lumen Desk Lamp",89,7],
+  ["SO-1098","2026-12-20","West","Consumer","Tandem Bike Light",39,12],
+  ["SO-1099","2026-12-28","South","Consumer","Atlas Standing Mat",99,1]
+];
+const ORDERS = RAW.map(([id, date, region, segment, product, price, units]) =>
+  ({ id, date, m: +date.slice(5, 7), region, segment, product, price, units, revenue: price * units }));
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const REGIONS = ["North", "South", "East", "West"];
+const SEGMENTS = ["All", "Consumer", "Business", "Education"];
+const PAGE = 10;
+const NS = "http://www.w3.org/2000/svg";
+
+const S = { from: 1, to: 12, segment: "All", region: null, q: "", sort: "date", dir: -1, page: 0 };
+
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+const money = n => "$" + (n >= 10000 ? (n / 1000).toFixed(1) + "k" : fmt(n));
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+// ── filters ────────────────────────────────────────────────────────────────
+for (const id of ["from", "to"]) {
+  MONTHS.forEach((m, i) => $(id).add(new Option(m, i + 1)));
+}
+$("from").value = 1; $("to").value = 12;
+$("from").onchange = e => { S.from = +e.target.value; if (S.to < S.from) { S.to = S.from; $("to").value = S.to; } S.page = 0; render(); };
+$("to").onchange = e => { S.to = +e.target.value; if (S.from > S.to) { S.from = S.to; $("from").value = S.from; } S.page = 0; render(); };
+SEGMENTS.forEach(s => {
+  const b = document.createElement("button");
+  b.textContent = s;
+  b.onclick = () => { S.segment = s; S.page = 0; render(); };
+  $("segs").appendChild(b);
+});
+$("q").oninput = e => { S.q = e.target.value.toLowerCase(); S.page = 0; render(); };
+$("regionChip").onclick = () => { S.region = null; S.page = 0; render(); };
+
+// Everything but the region: the bar chart shows all regions so one can be clicked.
+const base = (o, ignoreRange) =>
+  (ignoreRange || (o.m >= S.from && o.m <= S.to)) &&
+  (S.segment === "All" || o.segment === S.segment) &&
+  (!S.q || o.product.toLowerCase().includes(S.q) || o.id.toLowerCase().includes(S.q));
+const filtered = ignoreRange => ORDERS.filter(o => base(o, ignoreRange) && (!S.region || o.region === S.region));
+
+// ── tooltip ────────────────────────────────────────────────────────────────
+const tip = $("tip");
+function showTip(ev, html) {
+  tip.innerHTML = html; tip.classList.add("on");
+  const r = tip.getBoundingClientRect();
+  let x = ev.clientX + 14, y = ev.clientY - r.height - 10;
+  if (x + r.width > innerWidth - 8) x = ev.clientX - r.width - 14;
+  if (y < 8) y = ev.clientY + 16;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+const hideTip = () => tip.classList.remove("on");
+
+// ── KPI tiles ──────────────────────────────────────────────────────────────
+function byMonth(list, f) {
+  const out = Array(12).fill(0);
+  list.forEach(o => out[o.m - 1] += f(o));
+  return out;
+}
+function kpis() {
+  const all = filtered(true);
+  const inRange = all.filter(o => o.m >= S.from && o.m <= S.to);
+  const len = S.to - S.from + 1;
+  const prev = all.filter(o => o.m >= S.from - len && o.m < S.from);
+  const defs = [
+    ["Revenue", l => l.reduce((s, o) => s + o.revenue, 0), money, o => o.revenue],
+    ["Orders", l => l.length, fmt, () => 1],
+    ["Avg order", l => l.length ? l.reduce((s, o) => s + o.revenue, 0) / l.length : 0, money, null],
+    ["Units", l => l.reduce((s, o) => s + o.units, 0), fmt, o => o.units],
+  ];
+  $("kpis").innerHTML = "";
+  for (const [name, f, show, per] of defs) {
+    const now = f(inRange), before = f(prev);
+    const card = document.createElement("div");
+    card.className = "card kpi";
+    let delta = "no earlier period";
+    let cls = "";
+    if (S.from > 1 && before > 0) {
+      const p = (now - before) / before * 100;
+      cls = p >= 0 ? "up" : "down";
+      delta = `${p >= 0 ? "▲" : "▼"} ${Math.abs(p).toFixed(1)}% vs previous ${len} mo`;
+    }
+    card.innerHTML = `<h2>${name}</h2><div class="v">${show(now)}</div><div class="d ${cls}">${delta}</div>`;
+    // sparkline: the metric month by month, the range in focus
+    const series = per ? byMonth(all, per) : byMonth(all, o => o.revenue).map((r, i) => {
+      const n = all.filter(o => o.m === i + 1).length; return n ? r / n : 0; });
+    const svg = el("svg", { viewBox: "0 0 120 40", preserveAspectRatio: "none" }, card);
+    const top = Math.max(...series, 1);
+    const pts = series.map((v, i) => [i * 120 / 11, 38 - v / top * 34]);
+    el("path", { d: "M" + pts.map(p => p.join(",")).join("L") + "L120,40L0,40Z", fill: css("--accent"), opacity: .1 }, svg);
+    el("path", { d: "M" + pts.map(p => p.join(",")).join("L"), fill: "none", stroke: css("--accent"), "stroke-width": 1.6, "vector-effect": "non-scaling-stroke" }, svg);
+    el("rect", { x: (S.from - 1) * 120 / 11 - 2, y: 0, width: (S.to - S.from) * 120 / 11 + 4, height: 40, fill: css("--accent"), opacity: .06 }, svg);
+    $("kpis").appendChild(card);
+  }
+}
+
+// ── revenue line ───────────────────────────────────────────────────────────
+function lineChart() {
+  const svg = $("line"); svg.innerHTML = "";
+  const list = filtered(true);
+  const rev = byMonth(list, o => o.revenue), cnt = byMonth(list, () => 1);
+  const W = 640, H = 240, L = 48, R = 12, T = 12, B = 28;
+  const top = Math.ceil(Math.max(...rev, 1) / 2000) * 2000;
+  const X = i => L + i * (W - L - R) / 11, Y = v => T + (H - T - B) * (1 - v / top);
+  for (let g = 0; g <= 4; g++) {
+    const v = top * g / 4;
+    el("line", { x1: L, x2: W - R, y1: Y(v), y2: Y(v), class: "gridline" }, svg);
+    el("text", { x: L - 6, y: Y(v) + 4, "text-anchor": "end" }, svg).textContent = money(Math.round(v));
+  }
+  MONTHS.forEach((m, i) => el("text", { x: X(i), y: H - 8, "text-anchor": "middle" }, svg).textContent = m);
+  el("rect", { x: X(S.from - 1) - 8, y: T, width: X(S.to - 1) - X(S.from - 1) + 16, height: H - T - B, fill: css("--accent"), opacity: .06 }, svg);
+  const pts = rev.map((v, i) => [X(i), Y(v)]);
+  const area = el("path", { d: `M${pts.map(p => p.join(",")).join("L")}L${X(11)},${Y(0)}L${X(0)},${Y(0)}Z`, fill: css("--accent"), opacity: .12 }, svg);
+  const path = el("path", { d: "M" + pts.map(p => p.join(",")).join("L"), fill: "none", stroke: css("--accent"), "stroke-width": 2.5, "stroke-linejoin": "round" }, svg);
+  // draw-in animation
+  const len = path.getTotalLength();
+  path.style.strokeDasharray = len; path.style.strokeDashoffset = len;
+  path.getBoundingClientRect();
+  path.style.transition = "stroke-dashoffset .7s ease-out"; path.style.strokeDashoffset = 0;
+  const cursor = el("line", { y1: T, y2: H - B, stroke: css("--faint"), "stroke-dasharray": "3 3", opacity: 0 }, svg);
+  const dot = el("circle", { r: 5, fill: css("--accent"), stroke: css("--card"), "stroke-width": 2, opacity: 0 }, svg);
+  const hit = el("rect", { x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent" }, svg);
+  hit.onmousemove = ev => {
+    const box = svg.getBoundingClientRect();
+    const x = (ev.clientX - box.left) * W / box.width;
+    const i = Math.max(0, Math.min(11, Math.round((x - L) / ((W - L - R) / 11))));
+    cursor.setAttribute("x1", X(i)); cursor.setAttribute("x2", X(i)); cursor.setAttribute("opacity", 1);
+    dot.setAttribute("cx", X(i)); dot.setAttribute("cy", Y(rev[i])); dot.setAttribute("opacity", 1);
+    const prev = i > 0 && rev[i - 1] ? ((rev[i] - rev[i - 1]) / rev[i - 1] * 100).toFixed(0) + "% vs " + MONTHS[i - 1] : "";
+    showTip(ev, `${MONTHS[i]} 2026<br><b>${money(rev[i])}</b> from ${cnt[i]} orders<br>${prev}`);
+  };
+  hit.onmouseleave = () => { hideTip(); cursor.setAttribute("opacity", 0); dot.setAttribute("opacity", 0); };
+}
+
+// ── region bars: click to cross-filter ─────────────────────────────────────
+function barChart() {
+  const svg = $("bars"); svg.innerHTML = "";
+  const list = ORDERS.filter(o => base(o));
+  const rev = REGIONS.map(r => list.filter(o => o.region === r).reduce((s, o) => s + o.revenue, 0));
+  const total = rev.reduce((a, b) => a + b, 0) || 1;
+  const top = Math.max(...rev, 1);
+  REGIONS.forEach((r, i) => {
+    const y = 16 + i * 54, wd = (420 - 150) * rev[i] / top;
+    const g = el("g", { class: "bar" + (S.region && S.region !== r ? " dim" : "") }, svg);
+    el("rect", { x: 0, y: y - 6, width: 420, height: 48, fill: "transparent" }, g);
+    el("text", { x: 0, y: y + 22, style: "font-size:13px;fill:var(--ink)" }, g).textContent = r;
+    const bar = el("rect", { x: 60, y: y + 6, width: 0, height: 24, rx: 6, fill: css("--" + r) }, g);
+    requestAnimationFrame(() => { bar.style.transition = "width .5s ease-out"; bar.setAttribute("width", Math.max(wd, 2)); });
+    el("text", { x: 66 + wd, y: y + 22 }, g).textContent = money(rev[i]);
+    g.onclick = () => { S.region = S.region === r ? null : r; S.page = 0; render(); };
+    g.onmousemove = ev => showTip(ev, `${r}<br><b>${money(rev[i])}</b>, ${(rev[i] / total * 100).toFixed(0)}% of revenue<br>click to ${S.region === r ? "clear" : "filter"}`);
+    g.onmouseleave = hideTip;
+  });
+}
+
+// ── scatter ────────────────────────────────────────────────────────────────
+function scatter() {
+  const svg = $("scatter"); svg.innerHTML = "";
+  const list = filtered();
+  const W = 640, H = 260, L = 40, R = 12, T = 10, B = 30;
+  const X = p => L + (W - L - R) * p / 180, Y = u => T + (H - T - B) * (1 - u / 30);
+  for (const u of [0, 10, 20, 30]) {
+    el("line", { x1: L, x2: W - R, y1: Y(u), y2: Y(u), class: "gridline" }, svg);
+    el("text", { x: L - 6, y: Y(u) + 4, "text-anchor": "end" }, svg).textContent = u;
+  }
+  for (const p of [0, 50, 100, 150]) el("text", { x: X(p), y: H - 10, "text-anchor": "middle" }, svg).textContent = "$" + p;
+  el("text", { x: W - R, y: H - 10, "text-anchor": "end" }, svg).textContent = "price →";
+  for (const o of list) {
+    const c = el("circle", { class: "dot", cx: X(o.price) + (o.units % 3 - 1) * 3, cy: Y(Math.min(o.units, 30)), r: 5 + Math.sqrt(o.revenue) / 12, fill: css("--" + o.region), "fill-opacity": .55, stroke: css("--" + o.region) }, svg);
+    c.onmousemove = ev => { c.setAttribute("fill-opacity", .95); showTip(ev, `${o.id} · ${o.date}<br>${o.product}<br><b>${o.units} × $${o.price} = ${money(o.revenue)}</b><br>${o.region}, ${o.segment}`); };
+    c.onmouseleave = () => { c.setAttribute("fill-opacity", .55); hideTip(); };
+    c.onclick = () => { $("q").value = o.id; S.q = o.id.toLowerCase(); S.page = 0; render(); };
+  }
+  $("legend").innerHTML = REGIONS.map(r => `<span><i class="pill" style="background:var(--${r})"></i>${r}</span>`).join("") + "<span>size: revenue · click a dot to find its order</span>";
+}
+
+// ── top products ───────────────────────────────────────────────────────────
+function topProducts() {
+  const list = filtered();
+  const by = {};
+  list.forEach(o => by[o.product] = (by[o.product] || 0) + o.revenue);
+  const rows = Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const top = rows.length ? rows[0][1] : 1;
+  $("top").innerHTML = rows.length ? rows.map(([p, v]) =>
+    `<div style="display:grid;grid-template-columns:1fr 70px;gap:8px;margin:7px 0;align-items:center">
+       <div><div style="font-size:13px">${p}</div><div style="height:6px;border-radius:3px;background:var(--accent);opacity:.75;width:${v / top * 100}%;margin-top:3px"></div></div>
+       <div class="n" style="text-align:right;font-family:ui-monospace,monospace">${money(v)}</div></div>`).join("")
+    : `<div class="empty">No orders match.</div>`;
+}
+
+// ── table: sort by header, paginate ────────────────────────────────────────
+const COLS = [["id", "Order"], ["date", "Date"], ["product", "Product"], ["region", "Region"], ["segment", "Segment"], ["price", "Price", 1], ["units", "Units", 1], ["revenue", "Revenue", 1]];
+function table() {
+  $("head").innerHTML = "";
+  for (const [k, name, num] of COLS) {
+    const th = document.createElement("th");
+    th.className = (num ? "n " : "") + (S.sort === k ? "sorted" : "");
+    th.innerHTML = `${name}<span class="arr">${S.sort === k && S.dir > 0 ? "▲" : "▼"}</span>`;
+    th.onclick = () => { if (S.sort === k) S.dir = -S.dir; else { S.sort = k; S.dir = num ? -1 : 1; } S.page = 0; render(); };
+    $("head").appendChild(th);
+  }
+  const list = filtered().sort((a, b) => (a[S.sort] < b[S.sort] ? -1 : a[S.sort] > b[S.sort] ? 1 : 0) * S.dir);
+  const pages = Math.max(1, Math.ceil(list.length / PAGE));
+  S.page = Math.min(S.page, pages - 1);
+  const shown = list.slice(S.page * PAGE, S.page * PAGE + PAGE);
+  $("rows").innerHTML = shown.length ? shown.map(o => `<tr>
+    <td>${o.id}</td><td>${o.date}</td><td>${o.product}</td>
+    <td><i class="pill" style="background:var(--${o.region})"></i>${o.region}</td><td>${o.segment}</td>
+    <td class="n">$${o.price}</td><td class="n">${o.units}</td><td class="n">${money(o.revenue)}</td></tr>`).join("")
+    : `<tr><td colspan="8" class="empty">No orders match these filters.</td></tr>`;
+  $("count").textContent = list.length ? `${S.page * PAGE + 1}–${S.page * PAGE + shown.length} of ${list.length} orders` : "0 orders";
+  const pg = $("pages"); pg.innerHTML = "";
+  const btn = (label, page, on, dis) => {
+    const b = document.createElement("button");
+    b.textContent = label; b.disabled = dis; if (on) b.className = "on";
+    b.onclick = () => { S.page = page; render(); };
+    pg.appendChild(b); pg.append(" ");
+  };
+  btn("‹", S.page - 1, false, S.page === 0);
+  for (let p = 0; p < pages; p++) btn(String(p + 1), p, p === S.page, false);
+  btn("›", S.page + 1, false, S.page >= pages - 1);
+}
+
+function render() {
+  [...$("segs").children].forEach(b => b.classList.toggle("on", b.textContent === S.segment));
+  $("regionChip").hidden = !S.region;
+  $("regionChip").textContent = S.region ? `Region: ${S.region} ✕` : "";
+  kpis(); lineChart(); barChart(); scatter(); topProducts(); table();
+}
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  const b = $("pages").querySelectorAll("button");
+  if (e.key === "ArrowRight") b[b.length - 1].click();
+  if (e.key === "ArrowLeft") b[0].click();
+  if (e.key === "Escape") { S.region = null; S.q = ""; $("q").value = ""; render(); }
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+render();
+</script>
+</body>
+</html>

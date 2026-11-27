@@ -28,6 +28,7 @@ public static partial class Viewer
     {
         (_runtime, _managed) = (runtime, managed);
         App.LinkOpener = OpenLink;
+        Bib.Saver = (name, text) => { Download(name, text); return $"Downloaded {name}."; };
         // A finger across a code block, a wide table or the section strip scrolls it; elsewhere it drags.
         window.ScrollsAcross = runtime.ScrollsAcrossAt;
         // The status line's messages fade, and typing autosaves (into memory), with no input to wake a frame.
@@ -236,6 +237,7 @@ public static partial class Viewer
     [JSImport("ready", "bibmd")] private static partial void Ready();
     [JSImport("png", "bibmd")] private static partial Task<string> Png(string source);
     [JSImport("navigate", "bibmd")] private static partial void Navigate(string link);
+    [JSImport("download", "bibmd")] private static partial void Download(string name, string text);
     [JSImport("changed", "bibmd")] private static partial void Changed(string text);
     [JSImport("editing", "bibmd")] private static partial void Editing(int start, int end, bool isNew);
     [JSImport("typing", "bibmd")] private static partial void Typing(string text, int caret);

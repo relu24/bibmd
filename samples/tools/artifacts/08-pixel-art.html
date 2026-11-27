@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixel art editor</title>
+<style>
+  :root {
+    --bg: #eceef2; --card: #ffffff; --ink: #161a22; --muted: #667085; --rule: #dde1e8;
+    --accent: #3b5dc9; --check-a: #ffffff; --check-b: #e6e9ef;
+    --shadow: 0 1px 2px rgba(22,26,34,.06), 0 12px 30px -18px rgba(22,26,34,.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1016; --card: #161b24; --ink: #e8ecf3; --muted: #93a0b4; --rule: #273042;
+      --accent: #6d8cf0; --check-a: #39414e; --check-b: #2f3641;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 30px -18px rgba(0,0,0,.9);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); color: var(--ink); }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font: 800 26px/1.1 system-ui, sans-serif; letter-spacing: -0.02em; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin-bottom: 18px; }
+  .app { display: grid; grid-template-columns: 200px 1fr 220px; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .app { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 14px; box-shadow: var(--shadow); }
+  .card + .card { margin-top: 14px; }
+  .card h2 { font-size: 12px; font-weight: 700; color: var(--muted); margin: 0 0 10px; text-transform: uppercase; letter-spacing: .08em; }
+  .tools { display: grid; grid-template-columns: 1fr; gap: 6px; }
+  .tools .tool { justify-content: space-between; white-space: nowrap; }
+  .tool, .btn { font: inherit; display: flex; gap: 8px; align-items: center; justify-content: center; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--rule); background: var(--card); color: var(--ink); cursor: pointer; }
+  .tool kbd { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); border: 1px solid var(--rule); border-radius: 4px; padding: 0 4px; }
+  .tool.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tool.on kbd { color: #fff; border-color: rgba(255,255,255,.5); }
+  .btn:disabled { opacity: .35; cursor: default; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .switch { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; cursor: pointer; }
+  .switch input { accent-color: var(--accent); width: 18px; height: 18px; }
+  .palette { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .sw { aspect-ratio: 1; border-radius: 7px; border: 2px solid transparent; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); transition: transform .1s; }
+  .sw:hover { transform: scale(1.08); }
+  .sw.on { border-color: var(--ink); transform: scale(1.08); }
+  .current { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+  .current input[type=color] { width: 44px; height: 44px; border: 0; padding: 0; background: none; cursor: pointer; }
+  .current code { font: 13px ui-monospace, Menlo, monospace; }
+  .stage { display: flex; justify-content: center; align-items: center; padding: 18px; }
+  #board { touch-action: none; cursor: crosshair; image-rendering: pixelated; border-radius: 6px; box-shadow: 0 0 0 1px var(--rule); max-width: 100%; height: auto; }
+  #board.picker { cursor: copy; } #board.fill { cursor: cell; }
+  .status { display: flex; justify-content: space-between; color: var(--muted); font: 12px ui-monospace, Menlo, monospace; margin-top: 8px; }
+  .previews { display: flex; gap: 14px; align-items: end; }
+  .previews canvas { image-rendering: pixelated; background: repeating-conic-gradient(var(--check-a) 0 25%, var(--check-b) 0 50%) 0 0 / 8px 8px; box-shadow: 0 0 0 1px var(--rule); }
+  .previews figure { margin: 0; text-align: center; color: var(--muted); font-size: 12px; }
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translate(-50%, 20px); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 9px; opacity: 0; transition: .25s; pointer-events: none; }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+  .keys { color: var(--muted); font-size: 12px; line-height: 1.7; }
+  .keys kbd { font: 11px ui-monospace, Menlo, monospace; border: 1px solid var(--rule); border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Pixel art editor</h1>
+  <div class="sub">Drag to paint. Right-drag erases. Pick a tool, a colour, and go.</div>
+  <div class="app">
+    <aside>
+      <div class="card">
+        <h2>Tools</h2>
+        <div class="tools" id="tools"></div>
+      </div>
+      <div class="card">
+        <h2>Options</h2>
+        <label class="switch">Mirror (left ↔ right) <input type="checkbox" id="mirror"></label>
+        <label class="switch">Grid <input type="checkbox" id="grid" checked></label>
+        <div class="row" style="margin-top:6px">
+          <button class="btn" data-size="16">16 × 16</button>
+          <button class="btn" data-size="32">32 × 32</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>History</h2>
+        <div class="row">
+          <button class="btn" id="undo">↶ Undo</button>
+          <button class="btn" id="redo">↷ Redo</button>
+          <button class="btn" id="clear">Clear</button>
+        </div>
+        <div class="status"><span id="hist"></span></div>
+      </div>
+    </aside>
+
+    <section class="card">
+      <div class="stage"><canvas id="board" width="512" height="512"></canvas></div>
+      <div class="status"><span id="pos">–</span><span id="info"></span></div>
+    </section>
+
+    <aside>
+      <div class="card">
+        <h2>Palette</h2>
+        <div class="palette" id="palette"></div>
+        <div class="current">
+          <input type="color" id="picker" value="#b13e53" title="Custom colour">
+          <div><div style="color:var(--muted);font-size:12px">Current colour</div><code id="hex">#b13e53</code></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Preview</h2>
+        <div class="previews">
+          <figure><canvas id="p1"></canvas><figcaption>1×</figcaption></figure>
+          <figure><canvas id="p4"></canvas><figcaption>4×</figcaption></figure>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Export</h2>
+        <div class="row">
+          <button class="btn" id="png1">PNG 1×</button>
+          <button class="btn" id="png8">PNG 8×</button>
+        </div>
+      </div>
+      <div class="card keys">
+        <kbd>B</kbd> pencil · <kbd>E</kbd> eraser · <kbd>G</kbd> fill · <kbd>I</kbd> picker<br>
+        <kbd>0–9</kbd> swatch · <kbd>M</kbd> mirror · <kbd>#</kbd> grid · <kbd>Ctrl Z</kbd> undo · <kbd>Ctrl Y</kbd> redo
+      </div>
+    </aside>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const PALETTE = ["#1a1c2c", "#5d275d", "#b13e53", "#ef7d57", "#ffcd75", "#a7f070", "#38b764", "#257179",
+                 "#29366f", "#3b5dc9", "#41a6f6", "#73eff7", "#f4f4f4", "#94b0c2", "#566c86", "#333c57"];
+const HEART = [
+  "................", "................", "...kkk....kkk...", "..krrrk..krrrk..",
+  ".krpprrkkrrrrrk.", ".krpwrrrrrrrrrk.", ".krpprrrrrrrrrk.", ".krrrrrrrrrrrsk.",
+  "..krrrrrrrrrrsk.", "...krrrrrrrrsk..", "....krrrrrrsk...", ".....krrrrsk....",
+  "......krrsk.....", ".......kkk......", "................", "................",
+];
+const KEY = { k: "#1a1c2c", r: "#b13e53", p: "#ef7d57", w: "#f4f4f4", s: "#5d275d" };
+const TOOLS = [["pencil", "✎ Pencil", "B"], ["eraser", "⌫ Eraser", "E"], ["fill", "◧ Fill", "G"], ["picker", "⊙ Picker", "I"]];
+
+const S = { n: 16, px: [], tool: "pencil", color: "#b13e53", mirror: false, grid: true, undo: [], redo: [] };
+const $ = id => document.getElementById(id);
+const board = $("board"), ctx = board.getContext("2d");
+
+function blank(n) { return Array(n * n).fill(null); }
+function load16() { S.n = 16; S.px = HEART.flatMap(r => [...r].map(c => KEY[c] || null)); }
+load16();
+
+// ── drawing ──────────────────────────────────────────────────────────────
+function cssVar(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function draw() {
+  const n = S.n, c = board.width / n;
+  const a = cssVar("--check-a"), b = cssVar("--check-b");
+  for (let i = 0; i < n * n; i++) {
+    const x = i % n, y = (i / n) | 0;
+    ctx.fillStyle = S.px[i] || ((x + y) % 2 ? a : b);
+    ctx.fillRect(x * c, y * c, c, c);
+  }
+  if (S.grid) {
+    ctx.strokeStyle = "rgba(128,128,140,.28)"; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let k = 1; k < n; k++) { ctx.moveTo(k * c + .5, 0); ctx.lineTo(k * c + .5, board.height); ctx.moveTo(0, k * c + .5); ctx.lineTo(board.width, k * c + .5); }
+    ctx.stroke();
+  }
+  if (S.mirror) {
+    ctx.strokeStyle = cssVar("--accent"); ctx.setLineDash([6, 4]); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(board.width / 2, 0); ctx.lineTo(board.width / 2, board.height); ctx.stroke(); ctx.setLineDash([]);
+  }
+  if (hover >= 0) {
+    ctx.strokeStyle = cssVar("--ink"); ctx.lineWidth = 2;
+    for (const i of targets(hover)) ctx.strokeRect((i % n) * c + 1, ((i / n) | 0) * c + 1, c - 2, c - 2);
+  }
+  previews();
+}
+function render(scale, canvas) {
+  canvas.width = S.n * scale; canvas.height = S.n * scale;
+  const g = canvas.getContext("2d");
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  S.px.forEach((col, i) => { if (col) { g.fillStyle = col; g.fillRect((i % S.n) * scale, ((i / S.n) | 0) * scale, scale, scale); } });
+}
+function previews() { render(1, $("p1")); render(4, $("p4")); }
+
+// ── history ──────────────────────────────────────────────────────────────
+function snapshot() { S.undo.push({ n: S.n, px: S.px.slice() }); if (S.undo.length > 100) S.undo.shift(); S.redo = []; ui(); }
+function step(from, to) {
+  if (!from.length) return;
+  to.push({ n: S.n, px: S.px.slice() });
+  const s = from.pop(); S.n = s.n; S.px = s.px; draw(); ui();
+}
+
+// ── tools ────────────────────────────────────────────────────────────────
+const targets = i => { const x = i % S.n, y = (i / S.n) | 0, m = y * S.n + (S.n - 1 - x); return S.mirror && m !== i ? [i, m] : [i]; };
+function paint(i, col) { for (const t of targets(i)) S.px[t] = col; }
+function flood(i, col) {
+  const target = S.px[i];
+  if (target === col) return;
+  const q = [i], seen = new Set([i]);
+  while (q.length) {
+    const j = q.shift(); S.px[j] = col;
+    const x = j % S.n, y = (j / S.n) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy, k = ny * S.n + nx;
+      if (nx >= 0 && ny >= 0 && nx < S.n && ny < S.n && !seen.has(k) && S.px[k] === target) { seen.add(k); q.push(k); }
+    }
+  }
+}
+function line(a, b, col) {   // Bresenham between two cells, so a fast drag leaves no gaps
+  let x0 = a % S.n, y0 = (a / S.n) | 0; const x1 = b % S.n, y1 = (b / S.n) | 0;
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    paint(y0 * S.n + x0, col);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+function setColor(c) {
+  S.color = c; $("picker").value = c; $("hex").textContent = c;
+  [...$("palette").children].forEach(sw => sw.classList.toggle("on", sw.dataset.c === c));
+}
+
+// ── pointer ──────────────────────────────────────────────────────────────
+let hover = -1, last = -1, drawing = false, erasing = false;
+function cellAt(ev) {
+  const r = board.getBoundingClientRect();
+  const x = Math.floor((ev.clientX - r.left) / r.width * S.n), y = Math.floor((ev.clientY - r.top) / r.height * S.n);
+  return x < 0 || y < 0 || x >= S.n || y >= S.n ? -1 : y * S.n + x;
+}
+board.addEventListener("contextmenu", e => e.preventDefault());
+board.addEventListener("pointerdown", ev => {
+  const i = cellAt(ev); if (i < 0) return;
+  erasing = ev.button === 2;
+  const tool = erasing ? "eraser" : S.tool;
+  if (tool === "picker") { if (S.px[i]) setColor(S.px[i]); setTool("pencil"); return; }
+  snapshot();
+  if (tool === "fill") { flood(i, S.color); draw(); return; }
+  drawing = true; last = i;
+  board.setPointerCapture(ev.pointerId);
+  paint(i, tool === "eraser" ? null : S.color); draw();
+});
+board.addEventListener("pointermove", ev => {
+  const i = cellAt(ev);
+  $("pos").textContent = i < 0 ? "–" : `x ${i % S.n}, y ${(i / S.n) | 0}  ${S.px[i] || "transparent"}`;
+  if (drawing && i >= 0 && i !== last) {
+    line(last, i, (erasing || S.tool === "eraser") ? null : S.color); last = i;
+  }
+  if (i !== hover) { hover = i; }
+  draw();
+});
+board.addEventListener("pointerup", () => { drawing = false; erasing = false; });
+board.addEventListener("pointerleave", () => { hover = -1; $("pos").textContent = "–"; draw(); });
+
+// ── controls ─────────────────────────────────────────────────────────────
+function setTool(t) {
+  S.tool = t;
+  [...$("tools").children].forEach(b => b.classList.toggle("on", b.dataset.t === t));
+  board.className = t;
+}
+TOOLS.forEach(([t, label, key]) => {
+  const b = document.createElement("button");
+  b.className = "tool"; b.dataset.t = t; b.innerHTML = `${label} <kbd>${key}</kbd>`;
+  b.onclick = () => setTool(t);
+  $("tools").appendChild(b);
+});
+PALETTE.forEach(c => {
+  const sw = document.createElement("div");
+  sw.className = "sw"; sw.dataset.c = c; sw.style.background = c; sw.title = c;
+  sw.onclick = () => setColor(c);
+  $("palette").appendChild(sw);
+});
+$("picker").oninput = e => setColor(e.target.value);
+$("mirror").onchange = e => { S.mirror = e.target.checked; draw(); };
+$("grid").onchange = e => { S.grid = e.target.checked; draw(); };
+$("undo").onclick = () => step(S.undo, S.redo);
+$("redo").onclick = () => step(S.redo, S.undo);
+$("clear").onclick = () => { snapshot(); S.px = blank(S.n); draw(); };
+document.querySelectorAll("[data-size]").forEach(b => b.onclick = () => {
+  const n = +b.dataset.size; if (n === S.n) return;
+  snapshot(); S.n = n; S.px = n === 16 ? (load16(), S.px) : blank(n); draw(); toast(`${n} × ${n} canvas`);
+});
+function ui() {
+  $("undo").disabled = !S.undo.length; $("redo").disabled = !S.redo.length;
+  $("hist").textContent = `${S.undo.length} step${S.undo.length === 1 ? "" : "s"} to undo`;
+  $("info").textContent = `${S.n} × ${S.n} · ${S.px.filter(Boolean).length} pixels painted`;
+}
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 1600); }
+
+function exportPng(scale) {
+  const c = document.createElement("canvas"); render(scale, c);
+  c.toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = `pixel-art-${S.n}x${S.n}@${scale}x.png`;
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast(`Saved ${c.width} × ${c.height} PNG`);
+  });
+}
+$("png1").onclick = () => exportPng(1);
+$("png8").onclick = () => exportPng(8);
+
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") return;
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? step(S.redo, S.undo) : step(S.undo, S.redo); return; }
+  if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); step(S.redo, S.undo); return; }
+  if (e.ctrlKey || e.metaKey) return;
+  const tool = { b: "pencil", e: "eraser", g: "fill", i: "picker" }[k];
+  if (tool) setTool(tool);
+  if (k === "m") { $("mirror").click(); }
+  if (k === "#") { $("grid").click(); }
+  if (/^[0-9]$/.test(k)) setColor(PALETTE[+k]);   // 0-9: the first ten swatches
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+
+setTool("pencil"); setColor(S.color); draw(); ui();
+</script>
+</body>
+</html>

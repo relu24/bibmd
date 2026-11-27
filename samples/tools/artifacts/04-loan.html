@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mortgage and loan calculator</title>
+<style>
+  :root {
+    --bg: #eef1f4; --card: #ffffff; --ink: #121821; --muted: #5d6877; --faint: #9aa4b1; --rule: #d9dfe6;
+    --principal: #2f6fd0; --interest: #e39a00; --balance: #c3cad3; --ok: #2f8f5b; --a: #2f6fd0; --b: #b0458f;
+    --shadow: 0 1px 2px rgba(18,24,33,.06), 0 12px 32px -20px rgba(18,24,33,.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1217; --card: #161c24; --ink: #e8edf3; --muted: #9aa6b5; --faint: #5d6877; --rule: #263040;
+      --principal: #6aa5ff; --interest: #ffbf3c; --balance: #3a4452; --ok: #5cc98d; --a: #6aa5ff; --b: #e07ac0;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px -20px rgba(0,0,0,.9);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); color: var(--ink); }
+  body { margin: 0; font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1060px; margin: 0 auto; padding: 40px 24px 80px; }
+  .kicker { font: 700 12px/1 ui-monospace, Menlo, monospace; letter-spacing: .18em; text-transform: uppercase; color: var(--principal); }
+  h1 { font: 800 44px/1.05 "Avenir Next", "Helvetica Neue", system-ui, sans-serif; letter-spacing: -0.03em; margin: 12px 0 10px; }
+  h2 { font: 800 24px/1.2 "Avenir Next", "Helvetica Neue", system-ui, sans-serif; letter-spacing: -0.01em; margin: 40px 0 12px; }
+  p.lede { color: var(--muted); max-width: 680px; margin: 0 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--rule); border-radius: 18px; padding: 20px; box-shadow: var(--shadow); }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 820px) { .pair { grid-template-columns: 1fr; } }
+  .scen h3 { margin: 0 0 12px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .field input { width: 100%; font: 600 15px ui-monospace, Menlo, monospace; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); }
+  .field input:focus { outline: 2px solid var(--principal); outline-offset: -1px; }
+  .field .wrap { position: relative; }
+  .field .unit { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; color: var(--faint); pointer-events: none; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+  .stat { background: color-mix(in srgb, var(--bg) 70%, transparent); border-radius: 12px; padding: 10px 12px; }
+  .stat b { display: block; font: 800 22px/1.15 ui-monospace, Menlo, monospace; letter-spacing: -0.02em; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .stat.good b { color: var(--ok); }
+  .donutrow { display: flex; gap: 18px; align-items: center; margin-top: 16px; }
+  .donut { width: 132px; height: 132px; flex: none; }
+  .donut circle { transition: stroke-dasharray .5s ease, stroke-dashoffset .5s ease; }
+  .legend { font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
+  .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 6px; vertical-align: -1px; }
+  .legend b { color: var(--ink); font-family: ui-monospace, Menlo, monospace; }
+  .diff { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px 26px; font-size: 14px; color: var(--muted); }
+  .diff b { color: var(--ink); font-family: ui-monospace, Menlo, monospace; }
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: transparent; }
+  .seg button.on { background: var(--ink); color: var(--bg); }
+  button { font: 600 13px system-ui, sans-serif; padding: 7px 13px; border-radius: 10px; border: 1px solid var(--rule); background: var(--card); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--principal); color: #fff; border-color: var(--principal); }
+  .chart { position: relative; }
+  .chart svg { width: 100%; height: 280px; display: block; }
+  .chart text { font: 11px ui-monospace, Menlo, monospace; fill: var(--faint); }
+  .tip { position: absolute; pointer-events: none; background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 8px 10px; font-size: 12px; box-shadow: var(--shadow); white-space: nowrap; opacity: 0; transition: opacity .12s; }
+  .tip b { font-family: ui-monospace, Menlo, monospace; }
+  .tablewrap { max-height: 440px; overflow: auto; border: 1px solid var(--rule); border-radius: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 7px 12px; text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { position: sticky; top: 0; background: var(--card); color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--rule); z-index: 1; }
+  tbody td { font-family: ui-monospace, Menlo, monospace; border-bottom: 1px solid color-mix(in srgb, var(--rule) 50%, transparent); }
+  tbody tr:hover td { background: color-mix(in srgb, var(--principal) 7%, transparent); }
+  tbody tr.yearend td { border-bottom-color: var(--rule); }
+  .muted { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="kicker">A calculator</div>
+  <h1>What does the mortgage really cost?</h1>
+  <p class="lede">Set up two loans side by side: the same house on a 30-year and a 15-year term, or the same loan with and without an extra payment each month. Every number, chart and row below follows as you type.</p>
+
+  <div class="pair" id="scenarios"></div>
+  <div class="card" style="margin-top:18px">
+    <div class="toolbar" style="margin-bottom:6px">
+      <span class="muted">Start Scenario B from A, then change one thing:</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button data-preset="copy">B = A</button>
+        <button data-preset="extra">B = A + $300 a month</button>
+        <button data-preset="term">B = A on 15 years</button>
+        <button data-preset="rate">B = A at 1 point less</button>
+      </div>
+    </div>
+    <div class="diff" id="diff"></div>
+  </div>
+
+  <h2>Where the money goes</h2>
+  <div class="card">
+    <div class="toolbar">
+      <div class="seg" id="chartPick"><button data-s="0" class="on">Scenario A</button><button data-s="1">Scenario B</button></div>
+      <div class="legend" style="display:flex;gap:16px">
+        <span><i style="background:var(--balance)"></i>Balance left</span>
+        <span><i style="background:var(--principal)"></i>Principal paid</span>
+        <span><i style="background:var(--interest)"></i>Interest paid</span>
+      </div>
+    </div>
+    <div class="chart" id="chart"><svg id="area" viewBox="0 0 1000 280" preserveAspectRatio="none"></svg><div class="tip" id="tip"></div></div>
+    <p class="muted">Each month's total is everything the loan has cost or still owes: the balance left, plus what has gone to principal and to interest so far. Hover for a month.</p>
+  </div>
+
+  <h2>Amortization schedule</h2>
+  <div class="card">
+    <div class="toolbar">
+      <div class="group" style="display:flex;gap:10px">
+        <div class="seg" id="tablePick"><button data-s="0" class="on">Scenario A</button><button data-s="1">Scenario B</button></div>
+        <div class="seg" id="grain"><button data-g="month" class="on">Monthly</button><button data-g="year">Yearly</button></div>
+      </div>
+      <button class="primary" id="csv">Download CSV</button>
+    </div>
+    <div class="tablewrap" id="tablewrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+  </div>
+</main>
+
+<script>
+const scen = [
+  { name: "Scenario A", color: "var(--a)", amount: 420000, rate: 6.5, years: 30, extra: 0, start: "2027-01" },
+  { name: "Scenario B", color: "var(--b)", amount: 420000, rate: 6.5, years: 30, extra: 300, start: "2027-01" },
+];
+let chartIdx = 0, tableIdx = 0, grain = "month";
+const $ = id => document.getElementById(id);
+const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const cents = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const monthName = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+
+// Month arithmetic: "2027-01" plus n months, as a date in UTC.
+function addMonths(ym, n) { const [y, m] = ym.split("-").map(Number); return new Date(Date.UTC(y, m - 1 + n, 1)); }
+const label = (ym, n) => monthName.format(addMonths(ym, n));
+
+function payment(P, r, n) { return r === 0 ? P / n : P * r / (1 - Math.pow(1 + r, -n)); }
+
+function schedule(s) {
+  const r = s.rate / 100 / 12, n = Math.round(s.years * 12), pay = payment(s.amount, r, n);
+  const rows = []; let bal = s.amount, cumP = 0, cumI = 0;
+  for (let k = 0; k < n && bal > 0.005; k++) {
+    const interest = bal * r;
+    let principal = Math.min(bal, pay - interest + s.extra);
+    bal -= principal; cumP += principal; cumI += interest;
+    rows.push({ k, date: label(s.start, k), year: addMonths(s.start, k).getUTCFullYear(), payment: principal + interest, principal, interest, balance: Math.max(bal, 0), cumP, cumI });
+  }
+  const base = s.extra ? schedule({ ...s, extra: 0 }) : null;
+  return { pay, rows, interest: cumI, months: rows.length, saved: base ? base.months - rows.length : 0, savedInterest: base ? base.interest - cumI : 0, payoff: rows.length ? rows[rows.length - 1].date : "" };
+}
+
+function field(i, key, lab, unit, step) {
+  return `<div class="field"><label for="f${i}${key}">${lab}</label><div class="wrap">
+    <input id="f${i}${key}" data-i="${i}" data-k="${key}" type="${key === "start" ? "month" : "number"}" step="${step || 1}" value="${scen[i][key]}">
+    ${unit ? `<span class="unit">${unit}</span>` : ""}</div></div>`;
+}
+
+function buildInputs() {
+  $("scenarios").innerHTML = scen.map((s, i) => `
+    <div class="card scen">
+      <h3><span class="dot" style="background:${s.color}"></span>${s.name}</h3>
+      <div class="fields">
+        ${field(i, "amount", "Loan amount", "USD", 1000)}${field(i, "rate", "Interest rate", "% / yr", 0.05)}
+        ${field(i, "years", "Term", "years", 1)}${field(i, "extra", "Extra each month", "USD", 50)}
+        ${field(i, "start", "First payment", "")}
+      </div>
+      <div class="stats" id="stats${i}"></div>
+      <div class="donutrow"><svg class="donut" viewBox="0 0 42 42" id="donut${i}"></svg><div class="legend" id="legend${i}"></div></div>
+    </div>`).join("");
+  document.querySelectorAll(".field input").forEach(inp => inp.addEventListener("input", () => {
+    const s = scen[+inp.dataset.i], k = inp.dataset.k;
+    if (k === "start") { if (inp.value) s.start = inp.value; }
+    else { const v = parseFloat(inp.value); s[k] = isFinite(v) && v >= 0 ? v : 0; }
+    if (s.years < 1) s.years = 1;
+    update();
+  }));
+}
+
+function donut(svg, principal, interest) {
+  const total = principal + interest || 1, C = 2 * Math.PI * 15.915, p = principal / total * C;
+  svg.innerHTML = `
+    <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--interest)" stroke-width="6"></circle>
+    <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--principal)" stroke-width="6" stroke-dasharray="${p} ${C - p}" stroke-dashoffset="${C / 4}"></circle>
+    <text x="21" y="20" text-anchor="middle" style="font:700 5px ui-monospace,monospace;fill:var(--ink)">${Math.round(interest / total * 100)}%</text>
+    <text x="21" y="26" text-anchor="middle" style="font:3px system-ui;fill:var(--muted)">interest</text>`;
+}
+
+let results = [];
+var update = function () {
+  results = scen.map(schedule);
+  results.forEach((R, i) => {
+    const s = scen[i];
+    $("stats" + i).innerHTML = `
+      <div class="stat"><span>Monthly payment</span><b>${cents.format(R.pay + s.extra)}</b></div>
+      <div class="stat"><span>Total interest</span><b>${money.format(R.interest)}</b></div>
+      <div class="stat"><span>Paid off</span><b>${R.payoff}</b></div>
+      <div class="stat ${R.saved ? "good" : ""}"><span>Months saved by the extra</span><b>${R.saved}</b></div>`;
+    donut($("donut" + i), s.amount, R.interest);
+    $("legend" + i).innerHTML = `<span><i style="background:var(--principal)"></i>Principal <b>${money.format(s.amount)}</b></span>
+      <span><i style="background:var(--interest)"></i>Interest <b>${money.format(R.interest)}</b></span>
+      <span>Total paid <b>${money.format(s.amount + R.interest)}</b></span>`;
+  });
+  const [A, B] = results, dI = A.interest - B.interest, dM = A.months - B.months;
+  $("diff").innerHTML = `<span>B against A:</span>
+    <span>interest <b>${dI >= 0 ? "−" : "+"}${money.format(Math.abs(dI))}</b></span>
+    <span>paid off <b>${Math.abs(dM)} months ${dM >= 0 ? "sooner" : "later"}</b></span>
+    <span>monthly outlay <b>${cents.format(B.pay + scen[1].extra - A.pay - scen[0].extra)}</b> more</span>`;
+  drawChart(); drawTable();
+}
+
+function drawChart() {
+  const R = results[chartIdx], s = scen[chartIdx], svg = $("area"), W = 1000, H = 280, pad = { l: 56, r: 10, t: 10, b: 24 };
+  const rows = R.rows, n = Math.max(rows.length, 1), top = s.amount + Math.max(...results.map(x => x.interest));
+  const x = k => pad.l + k / n * (W - pad.l - pad.r), y = v => H - pad.b - v / top * (H - pad.t - pad.b);
+  const band = (lo, hi) => "M" + rows.map(r => `${x(r.k + 1)},${y(hi(r))}`).join("L") + "L" + rows.slice().reverse().map(r => `${x(r.k + 1)},${y(lo(r))}`).join("L") + "Z";
+  let g = "";
+  for (let t = 0; t <= 4; t++) { const v = top * t / 4; g += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--rule)"/><text x="${pad.l - 6}" y="${y(v) + 4}" text-anchor="end">${v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : Math.round(v / 1000) + "k"}</text>`; }
+  for (let yr = 0; yr <= n / 12; yr += 5) g += `<text x="${x(yr * 12)}" y="${H - 6}" text-anchor="middle">${addMonths(s.start, yr * 12).getUTCFullYear()}</text>`;
+  svg.innerHTML = g +
+    `<path d="${band(r => 0, r => r.cumI)}" fill="var(--interest)" opacity=".9"/>` +
+    `<path d="${band(r => r.cumI, r => r.cumI + r.cumP)}" fill="var(--principal)" opacity=".9"/>` +
+    `<path d="${band(r => r.cumI + r.cumP, r => r.cumI + r.cumP + r.balance)}" fill="var(--balance)"/>` +
+    `<line id="cursor" y1="${pad.t}" y2="${H - pad.b}" stroke="var(--ink)" stroke-width="1" opacity="0"/>`;
+  svg.onmousemove = e => {
+    const box = svg.getBoundingClientRect(), fx = (e.clientX - box.left) / box.width * W;
+    const k = Math.max(0, Math.min(rows.length - 1, Math.round((fx - pad.l) / (W - pad.l - pad.r) * n) - 1)), r = rows[k];
+    if (!r) return;
+    const c = $("cursor"); c.setAttribute("x1", x(r.k + 1)); c.setAttribute("x2", x(r.k + 1)); c.setAttribute("opacity", .5);
+    const tip = $("tip"); tip.style.opacity = 1;
+    tip.innerHTML = `<b>${r.date}</b><br>Balance ${money.format(r.balance)}<br>Principal paid ${money.format(r.cumP)}<br>Interest paid ${money.format(r.cumI)}`;
+    const px = x(r.k + 1) / W * box.width; tip.style.left = Math.min(px + 12, box.width - 190) + "px"; tip.style.top = "12px";
+  };
+  svg.onmouseleave = () => { $("tip").style.opacity = 0; $("cursor").setAttribute("opacity", 0); };
+}
+
+function tableRows() {
+  const R = results[tableIdx];
+  if (grain === "month") return R.rows.map(r => [r.k + 1, r.date, r.payment, r.principal, r.interest, r.balance]);
+  const years = new Map();
+  for (const r of R.rows) {
+    const y = years.get(r.year) || [r.year, 0, 0, 0, 0];
+    y[1] += r.payment; y[2] += r.principal; y[3] += r.interest; y[4] = r.balance; years.set(r.year, y);
+  }
+  return [...years.values()];
+}
+function tableHead() { return grain === "month" ? ["#", "Month", "Payment", "Principal", "Interest", "Balance"] : ["Year", "Payments", "Principal", "Interest", "Balance at year end"]; }
+
+function drawTable() {
+  const head = tableHead(), rows = tableRows(), lead = grain === "month" ? 2 : 1;
+  $("thead").innerHTML = "<tr>" + head.map(h => `<th>${h}</th>`).join("") + "</tr>";
+  $("tbody").innerHTML = rows.map(r => `<tr class="${grain === "month" && r[0] % 12 === 0 ? "yearend" : ""}">` +
+    r.map((c, j) => `<td>${j < lead ? c : cents.format(c)}</td>`).join("") + "</tr>").join("");
+}
+
+$("csv").onclick = () => {
+  const lead = grain === "month" ? 2 : 1;
+  const lines = [tableHead().join(","), ...tableRows().map(r => r.map((c, j) => j < lead ? `"${c}"` : c.toFixed(2)).join(","))];
+  const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `amortization-${scen[tableIdx].name.toLowerCase().replace(/\s+/g, "-")}-${grain}ly.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+function seg(id, attr, set) {
+  document.querySelectorAll(`#${id} button`).forEach(b => b.onclick = () => {
+    document.querySelectorAll(`#${id} button`).forEach(x => x.classList.toggle("on", x === b));
+    set(b.dataset[attr]);
+  });
+}
+seg("chartPick", "s", v => { chartIdx = +v; drawChart(); });
+seg("tablePick", "s", v => { tableIdx = +v; $("tablewrap").scrollTop = 0; drawTable(); });
+seg("grain", "g", v => { grain = v; $("tablewrap").scrollTop = 0; drawTable(); });
+
+// Presets copy Scenario A into B and change one thing, so the comparison isolates it.
+const presets = {
+  copy: a => ({}),
+  extra: a => ({ extra: a.extra + 300 }),
+  term: a => ({ years: 15 }),
+  rate: a => ({ rate: Math.max(0, +(a.rate - 1).toFixed(2)) }),
+};
+document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
+  const a = scen[0];
+  Object.assign(scen[1], { amount: a.amount, rate: a.rate, years: a.years, extra: a.extra, start: a.start }, presets[b.dataset.preset](a));
+  for (const k of ["amount", "rate", "years", "extra", "start"]) $("f1" + k).value = scen[1][k];
+  update();
+});
+
+// The scenarios live in the address too, so a link brings the same comparison back.
+const KEYS = ["amount", "rate", "years", "extra", "start"];
+function saveHash() {
+  const enc = scen.map(x => KEYS.map(k => x[k]).join("~")).join("|");
+  history.replaceState(null, "", "#" + enc);
+}
+function loadHash() {
+  const parts = decodeURIComponent(location.hash.slice(1)).split("|");
+  if (parts.length !== 2) return;
+  parts.forEach((part, i) => {
+    const v = part.split("~");
+    if (v.length !== KEYS.length) return;
+    KEYS.forEach((k, j) => {
+      if (k === "start") { if (/^\d{4}-\d{2}$/.test(v[j])) scen[i].start = v[j]; }
+      else if (isFinite(parseFloat(v[j]))) scen[i][k] = Math.max(0, parseFloat(v[j]));
+    });
+  });
+}
+const plainUpdate = update;
+update = () => { plainUpdate(); saveHash(); };
+
+loadHash();
+buildInputs();
+update();
+</script>
+</body>
+</html>

@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Website relaunch: project plan</title>
+<style>
+  :root {
+    --bg: #f3f4f6; --card: #ffffff; --ink: #14181f; --muted: #5f6a78; --faint: #a3acb8; --rule: #dde2e8;
+    --bar: #3d7be0; --crit: #d9473a; --done: #2f8f5b; --ms: #7b4fd6; --today: #e39a00;
+    --weekend: rgba(20,24,31,.045); --holiday: rgba(227,154,0,.14);
+    --shadow: 0 1px 2px rgba(20,24,31,.06), 0 12px 30px -20px rgba(20,24,31,.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1318; --card: #171c23; --ink: #e7ebf0; --muted: #9aa5b3; --faint: #5b6573; --rule: #283140;
+      --bar: #6aa5ff; --crit: #ff6b5e; --done: #5cc98d; --ms: #b394ff; --today: #ffbf3c;
+      --weekend: rgba(255,255,255,.035); --holiday: rgba(255,191,60,.12);
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.9);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); color: var(--ink); }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 36px 22px 80px; }
+  .kicker { font: 700 12px/1 ui-monospace, Menlo, monospace; letter-spacing: .16em; text-transform: uppercase; color: var(--bar); }
+  h1 { font: 800 36px/1.1 system-ui, sans-serif; letter-spacing: -.02em; margin: 10px 0 6px; }
+  .lede { color: var(--muted); max-width: 760px; margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--rule); border-radius: 16px; box-shadow: var(--shadow); padding: 18px; margin: 16px 0; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .stat { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 12px 16px; box-shadow: var(--shadow); }
+  .stat span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .stat b { display: block; font: 800 24px/1.2 ui-monospace, Menlo, monospace; }
+  .stat.crit b { color: var(--crit); }
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .toolbar .hint { color: var(--muted); font-size: 13px; margin-left: auto; }
+  button { font: 600 13px system-ui, sans-serif; padding: 7px 13px; border-radius: 9px; border: 1px solid var(--rule); background: var(--card); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button:hover { border-color: var(--faint); }
+  .legend { display: flex; gap: 14px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 14px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+  .wrap { overflow-x: auto; }
+  svg { display: block; user-select: none; }
+  svg text { font: 12px system-ui, sans-serif; fill: var(--ink); }
+  svg .axis { fill: var(--muted); font-size: 11px; }
+  svg .owner { fill: var(--muted); font-size: 11px; }
+  .bar { cursor: grab; transition: filter .15s; }
+  .bar:hover { filter: brightness(1.08); }
+  .bar.dragging { cursor: grabbing; }
+  .handle { cursor: ew-resize; }
+  .sel rect.body { stroke: var(--ink); stroke-width: 2; }
+  .arrow { fill: none; stroke: var(--faint); stroke-width: 1.4; }
+  .arrow.crit { stroke: var(--crit); stroke-width: 1.8; }
+  .row-bg:hover { fill: rgba(61,123,224,.06); }
+  form { display: grid; grid-template-columns: 2fr 1.2fr 90px 1.6fr auto; gap: 10px; align-items: end; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  input, select { font: 14px system-ui, sans-serif; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; padding: 6px 8px; border-bottom: 1px solid var(--rule); }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; }
+  td.num { font-family: ui-monospace, Menlo, monospace; }
+  tr.selrow td { background: rgba(61,123,224,.08); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+  .pill.crit { background: color-mix(in srgb, var(--crit) 18%, transparent); color: var(--crit); }
+  .pill.ok { background: color-mix(in srgb, var(--done) 18%, transparent); color: var(--done); }
+  .tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 12px; padding: 5px 9px; border-radius: 7px; opacity: 0; transition: opacity .12s; white-space: nowrap; z-index: 5; }
+  @media (max-width: 760px) { .stats { grid-template-columns: 1fr 1fr; } form { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="kicker">Project planner</div>
+  <h1>Website relaunch for Larkspur Studio</h1>
+  <p class="lede">Twelve tasks, five roles, one launch date. Drag a bar to delay a task, drag its right edge to change how long it takes; everything that depends on it moves. Weekends and the holidays are skipped. Red is the critical path: a day lost there is a day lost at launch.</p>
+
+  <div class="stats">
+    <div class="stat"><span>Work finishes</span><b id="sEnd">–</b></div>
+    <div class="stat"><span>Working days</span><b id="sDays">–</b></div>
+    <div class="stat crit"><span>Critical tasks</span><b id="sCrit">–</b></div>
+    <div class="stat"><span>Today</span><b id="sToday">–</b></div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <button id="reset">Reset plan</button>
+      <button id="undo">Undo</button>
+      <div class="legend">
+        <span><i style="background:var(--bar)"></i>task</span>
+        <span><i style="background:var(--crit)"></i>critical path</span>
+        <span><i style="background:var(--ms);transform:rotate(45deg);width:10px"></i>milestone</span>
+        <span><i style="background:var(--today);width:3px"></i>today</span>
+        <span><i style="background:var(--holiday)"></i>holiday</span>
+      </div>
+      <span class="hint">Click a bar, then ← → to nudge, Shift+← → to resize</span>
+    </div>
+    <div class="wrap"><svg id="chart"></svg></div>
+  </div>
+
+  <div class="card">
+    <form id="add">
+      <label>New task<input id="fName" placeholder="e.g. Accessibility review" required></label>
+      <label>Owner<select id="fOwner"></select></label>
+      <label>Days<input id="fDur" type="number" min="0" max="40" value="3"></label>
+      <label>After<select id="fDep"></select></label>
+      <button class="primary" type="submit">Add task</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>#</th><th>Task</th><th>Owner</th><th>Days</th><th>Start</th><th>Finish</th><th>Slack</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</main>
+<div class="tip" id="tip"></div>
+
+<script>
+// ---------- the plan (invented) ----------
+const START = '2026-11-16';          // a Monday
+const TODAY = '2026-11-27';
+const HOLIDAYS = ['2026-12-24', '2026-12-25', '2026-12-31', '2027-01-01'];
+const OWNERS = ['Project lead', 'Designer', 'Developer', 'Writer', 'Tester'];
+const BASE = [
+  { id: 'kick',    name: 'Kick-off and scope',        owner: 'Project lead', dur: 2,  deps: [] },
+  { id: 'res',     name: 'User research',             owner: 'Designer',     dur: 5,  deps: ['kick'] },
+  { id: 'ia',      name: 'Information architecture',  owner: 'Designer',     dur: 3,  deps: ['res'] },
+  { id: 'cms',     name: 'Choose and set up the CMS', owner: 'Developer',    dur: 4,  deps: ['kick'] },
+  { id: 'vis',     name: 'Visual design',             owner: 'Designer',     dur: 6,  deps: ['ia'] },
+  { id: 'copy',    name: 'Write the copy',            owner: 'Writer',       dur: 8,  deps: ['ia'] },
+  { id: 'signoff', name: 'Design sign-off',           owner: 'Project lead', dur: 0,  deps: ['vis'] },
+  { id: 'build',   name: 'Build the templates',       owner: 'Developer',    dur: 10, deps: ['signoff', 'cms'] },
+  { id: 'content', name: 'Load the content',          owner: 'Writer',       dur: 4,  deps: ['build', 'copy'] },
+  { id: 'qa',      name: 'Testing and fixes',         owner: 'Tester',       dur: 5,  deps: ['content'] },
+  { id: 'train',   name: 'Train the editors',         owner: 'Project lead', dur: 2,  deps: ['content'] },
+  { id: 'launch',  name: 'Launch',                    owner: 'Project lead', dur: 0,  deps: ['qa', 'train'] },
+];
+let tasks = BASE.map(t => ({ ...t, delay: 0 }));
+let history = [];
+let selected = null;
+
+// ---------- working-day calendar ----------
+const DAY = 86400000;
+const t0 = Date.parse(START + 'T00:00:00Z');
+const off = iso => Math.round((Date.parse(iso + 'T00:00:00Z') - t0) / DAY);
+const holidaySet = new Set(HOLIDAYS.map(off));
+const isWork = o => { const wd = new Date(t0 + o * DAY).getUTCDay(); return wd !== 0 && wd !== 6 && !holidaySet.has(o); };
+const workdays = []; for (let o = 0; workdays.length < 400; o++) if (isWork(o)) workdays.push(o);
+const calOf = n => workdays[Math.max(0, n)];                 // working day n -> calendar offset
+const fmtDate = o => new Date(t0 + o * DAY).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const fmtLong = o => new Date(t0 + o * DAY).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+// ---------- schedule: forward and backward pass ----------
+function schedule() {
+  const byId = Object.fromEntries(tasks.map(t => [t.id, t]));
+  const order = [], seen = new Set();
+  const visit = t => { if (seen.has(t.id)) return; seen.add(t.id); t.deps.forEach(d => byId[d] && visit(byId[d])); order.push(t); };
+  tasks.forEach(visit);
+  for (const t of order) {
+    t.es = Math.max(t.delay, ...t.deps.map(d => byId[d] ? byId[d].ef : 0));
+    t.ef = t.es + t.dur;
+  }
+  const end = Math.max(...tasks.map(t => t.ef));
+  for (const t of order.slice().reverse()) {
+    const succ = tasks.filter(s => s.deps.includes(t.id));
+    t.lf = succ.length ? Math.min(...succ.map(s => s.ls)) : end;
+    t.ls = t.lf - t.dur;
+    t.slack = t.lf - t.ef;
+    t.crit = t.slack === 0;
+  }
+  return end;
+}
+
+// ---------- drawing ----------
+const svg = document.getElementById('chart');
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent && parent.appendChild(e); return e; };
+const LEFT = 230, ROW = 34, TOP = 46;
+let DAYW = 18;
+let layout = {};
+
+function draw() {
+  const end = schedule();
+  const lastCal = calOf(end) + 3;
+  const weeks = Math.ceil((lastCal + 1) / 7) + 1;
+  const days = weeks * 7;
+  DAYW = Math.max(12, (svg.parentNode.clientWidth - LEFT - 12) / days);   // fit the card, scroll when it cannot
+  const W = LEFT + days * DAYW + 10, H = TOP + tasks.length * ROW + 16;
+  svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = '';
+  const X = o => LEFT + o * DAYW;
+  layout = { X };
+
+  // days: weekends and holidays shaded
+  for (let o = 0; o < days; o++) {
+    const wd = new Date(t0 + o * DAY).getUTCDay();
+    if (holidaySet.has(o)) el('rect', { x: X(o), y: TOP - 8, width: DAYW, height: H - TOP, fill: 'var(--holiday)' }, svg);
+    else if (wd === 0 || wd === 6) el('rect', { x: X(o), y: TOP - 8, width: DAYW, height: H - TOP, fill: 'var(--weekend)' }, svg);
+  }
+  // weeks across
+  for (let w = 0; w <= weeks; w++) {
+    el('line', { x1: X(w * 7), y1: 14, x2: X(w * 7), y2: H, stroke: 'var(--rule)' }, svg);
+    if (w < weeks) {
+      const t = el('text', { x: X(w * 7) + 6, y: 20, class: 'axis' }, svg); t.textContent = 'W' + (w + 1);
+      const d = el('text', { x: X(w * 7) + 6, y: 34, class: 'axis' }, svg); d.textContent = fmtDate(w * 7);
+    }
+  }
+  // rows
+  tasks.forEach((t, i) => {
+    const y = TOP + i * ROW;
+    const bg = el('rect', { x: 0, y, width: W, height: ROW, fill: 'transparent', class: 'row-bg' }, svg);
+    bg.addEventListener('click', () => select(t.id));
+    const n = el('text', { x: 10, y: y + 15 }, svg); n.textContent = t.name;
+    if (t.crit) n.setAttribute('font-weight', '700');
+    const o = el('text', { x: 10, y: y + 28, class: 'owner' }, svg); o.textContent = t.owner;
+  });
+  // arrows: finish of a dependency to the start of its dependant, as an elbow
+  const byId = Object.fromEntries(tasks.map(t => [t.id, t]));
+  const rowOf = Object.fromEntries(tasks.map((t, i) => [t.id, i]));
+  el('defs', {}, svg).innerHTML =
+    `<marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--faint)"/></marker>
+     <marker id="ahc" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--crit)"/></marker>`;
+  for (const t of tasks) for (const d of t.deps) {
+    const a = byId[d]; if (!a) continue;
+    const x1 = X(calOf(a.ef - (a.dur ? 1 : 0)) + (a.dur ? 1 : 0.5)), y1 = TOP + rowOf[a.id] * ROW + ROW / 2;
+    const x2 = X(calOf(t.es) + (t.dur ? 0 : 0.5)) - (t.dur ? 0 : 7), y2 = TOP + rowOf[t.id] * ROW + ROW / 2;
+    const mid = Math.max(x1 + 6, Math.min(x2 - 8, x1 + 10));
+    const crit = a.crit && t.crit && a.ef === t.es;
+    el('path', { d: `M${x1},${y1} H${mid} V${y2} H${x2}`, class: 'arrow' + (crit ? ' crit' : ''), 'marker-end': crit ? 'url(#ahc)' : 'url(#ah)' }, svg);
+  }
+  // bars and diamonds
+  tasks.forEach((t, i) => {
+    const y = TOP + i * ROW;
+    const g = el('g', { class: 'bar' + (selected === t.id ? ' sel' : ''), 'data-id': t.id }, svg);
+    const colour = t.crit ? 'var(--crit)' : 'var(--bar)';
+    if (t.dur === 0) {
+      const cx = X(calOf(t.es) + 0.5), cy = y + ROW / 2, r = 9;
+      el('path', { d: `M${cx},${cy - r} L${cx + r},${cy} L${cx},${cy + r} L${cx - r},${cy} Z`, fill: t.crit ? 'var(--crit)' : 'var(--ms)', class: 'body' }, g);
+      const l = el('text', { x: cx + 14, y: cy + 4, class: 'owner' }, g); l.textContent = fmtDate(calOf(t.es));
+    } else {
+      // a bar per run of working days, so weekends show as gaps in the bar
+      const s = calOf(t.es), e = calOf(t.ef - 1) + 1;
+      el('rect', { x: X(s), y: y + 8, width: X(e) - X(s), height: ROW - 16, rx: 5, fill: colour, opacity: .22, class: 'body' }, g);
+      let run = null;
+      for (let n = t.es; n < t.ef; n++) {
+        const o = calOf(n);
+        if (run && o === run.e) run.e = o + 1; else { if (run) runs(run); run = { s: o, e: o + 1 }; }
+      }
+      run && runs(run);
+      function runs(r) { el('rect', { x: X(r.s) + 1, y: y + 9, width: X(r.e) - X(r.s) - 2, height: ROW - 18, rx: 4, fill: colour }, g); }
+      const h = el('rect', { x: X(e) - 6, y: y + 6, width: 8, height: ROW - 12, fill: 'transparent', class: 'handle' }, g);
+      h.dataset.handle = '1';
+      if (t.slack > 0) el('rect', { x: X(e), y: y + ROW / 2 - 1, width: X(calOf(t.lf - 1) + 1) - X(e), height: 2, fill: 'var(--faint)', opacity: .45 }, g);
+    }
+    g.addEventListener('pointerdown', ev => startDrag(ev, t, !!ev.target.dataset.handle));
+    g.addEventListener('pointermove', ev => tip(ev, t));
+    g.addEventListener('pointerleave', () => tipEl.style.opacity = 0);
+  });
+  // today
+  const tx = X(off(TODAY) + 0.5);
+  el('line', { x1: tx, y1: TOP - 10, x2: tx, y2: H, stroke: 'var(--today)', 'stroke-width': 2, 'stroke-dasharray': '4 3' }, svg);
+  const tl = el('text', { x: tx + 4, y: TOP - 2, class: 'axis' }, svg); tl.textContent = 'today'; tl.setAttribute('fill', 'var(--today)');
+
+  // summary
+  const crit = tasks.filter(t => t.crit);
+  document.getElementById('sEnd').textContent = fmtLong(calOf(Math.max(0, end - 1)));
+  document.getElementById('sDays').textContent = end;
+  document.getElementById('sCrit').textContent = crit.length + ' of ' + tasks.length;
+  document.getElementById('sToday').textContent = fmtDate(off(TODAY));
+  document.getElementById('rows').innerHTML = tasks.map((t, i) => `
+    <tr data-id="${t.id}" class="${selected === t.id ? 'selrow' : ''}">
+      <td class="num">${i + 1}</td><td>${t.dur === 0 ? '◆ ' : ''}${esc(t.name)}</td><td>${esc(t.owner)}</td>
+      <td class="num">${t.dur}</td><td class="num">${fmtDate(calOf(t.es))}</td>
+      <td class="num">${t.dur ? fmtDate(calOf(t.ef - 1)) : '–'}</td>
+      <td class="num">${t.slack} d</td>
+      <td>${t.crit ? '<span class="pill crit">critical</span>' : '<span class="pill ok">slack</span>'}</td>
+    </tr>`).join('');
+  document.querySelectorAll('#rows tr').forEach(r => r.addEventListener('click', () => select(r.dataset.id)));
+  fillForm();
+}
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// ---------- tooltip ----------
+const tipEl = document.getElementById('tip');
+function tip(ev, t) {
+  tipEl.textContent = `${t.name} · ${t.dur} d · ${fmtDate(calOf(t.es))}${t.dur ? '–' + fmtDate(calOf(t.ef - 1)) : ''} · slack ${t.slack} d`;
+  tipEl.style.left = ev.clientX + 12 + 'px'; tipEl.style.top = ev.clientY + 14 + 'px'; tipEl.style.opacity = 1;
+}
+
+// ---------- editing: drag, keys, form ----------
+function snapshot() { history.push(JSON.stringify(tasks)); if (history.length > 50) history.shift(); }
+function select(id) { selected = selected === id ? null : id; draw(); }
+
+function startDrag(ev, t, resize) {
+  ev.preventDefault();
+  snapshot();
+  selected = t.id;
+  const x0 = ev.clientX, dur0 = t.dur, es0 = t.es, delay0 = t.delay;
+  const move = e => {
+    const dd = Math.round((e.clientX - x0) / DAYW);                 // calendar days moved
+    if (resize && t.dur > 0) {
+      const endCal = calOf(es0 + dur0 - 1) + dd;
+      t.dur = Math.max(1, workdays.filter(o => o >= calOf(es0) && o <= endCal).length);
+    } else {
+      const target = calOf(es0) + dd;
+      const n = workdays.findIndex(o => o >= target);                // first working day on or after
+      t.delay = Math.max(0, delay0 + (n - es0));
+    }
+    draw();
+  };
+  const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  draw();
+}
+
+window.addEventListener('keydown', e => {
+  if (!selected || e.target.closest?.('input,select')) return;
+  const t = tasks.find(x => x.id === selected);
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    const s = e.key === 'ArrowRight' ? 1 : -1;
+    snapshot();
+    if (e.shiftKey) t.dur = Math.max(t.dur === 0 ? 0 : 1, t.dur + s);
+    else t.delay = s > 0 ? Math.max(t.delay, t.es) + 1 : Math.max(0, Math.min(t.delay, t.es) - 1);
+    draw(); e.preventDefault();
+  } else if (e.key === 'Escape') { selected = null; draw(); }
+  else if (e.key === 'z' && (e.ctrlKey || e.metaKey)) undo();
+});
+
+function undo() { if (history.length) { tasks = JSON.parse(history.pop()); draw(); } }
+document.getElementById('undo').onclick = undo;
+document.getElementById('reset').onclick = () => { snapshot(); tasks = BASE.map(t => ({ ...t, delay: 0 })); selected = null; draw(); };
+
+function fillForm() {
+  const o = document.getElementById('fOwner'), d = document.getElementById('fDep');
+  if (!o.options.length) o.innerHTML = OWNERS.map(x => `<option>${x}</option>`).join('');
+  const keep = d.value;
+  d.innerHTML = '<option value="">(nothing: starts at once)</option>' + tasks.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  d.value = keep || 'content';
+}
+document.getElementById('add').addEventListener('submit', e => {
+  e.preventDefault();
+  snapshot();
+  const name = document.getElementById('fName').value.trim();
+  const dep = document.getElementById('fDep').value;
+  const t = { id: 't' + Date.now(), name, owner: document.getElementById('fOwner').value,
+    dur: Math.max(0, +document.getElementById('fDur').value || 0), deps: dep ? [dep] : [], delay: 0 };
+  // put it just after what it follows, so the chart reads top to bottom
+  const at = dep ? tasks.findIndex(x => x.id === dep) + 1 : tasks.length;
+  tasks.splice(at, 0, t);
+  selected = t.id;
+  document.getElementById('fName').value = '';
+  draw();
+});
+
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Palette builder and contrast checker</title>
+<style>
+  :root {
+    --bg: #f4f4f2; --card: #ffffff; --ink: #16181c; --muted: #646a73; --faint: #a7adb5; --rule: #e0e2e5;
+    --focus: #3d7be0; --ok: #2f8f5b; --warn: #c98a00; --bad: #c9392f;
+    --shadow: 0 1px 2px rgba(22,24,28,.06), 0 12px 30px -20px rgba(22,24,28,.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101215; --card: #181b20; --ink: #e9ebee; --muted: #9ba2ac; --faint: #5d646e; --rule: #2a2f37;
+      --focus: #6aa5ff; --ok: #5cc98d; --warn: #ffbf3c; --bad: #ff6b5e;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.9);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); color: var(--ink); }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; padding: 36px 22px 80px; }
+  .kicker { font: 700 12px/1 ui-monospace, Menlo, monospace; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  h1 { font: 800 36px/1.1 system-ui, sans-serif; letter-spacing: -.02em; margin: 10px 0 6px; }
+  h2 { font: 700 20px/1.2 system-ui, sans-serif; margin: 0 0 12px; }
+  .lede { color: var(--muted); max-width: 720px; margin: 0 0 18px; }
+  .card { background: var(--card); border: 1px solid var(--rule); border-radius: 16px; box-shadow: var(--shadow); padding: 20px; margin: 16px 0; }
+  .top { display: grid; grid-template-columns: 300px 1fr; gap: 16px; }
+  .pick { display: flex; gap: 12px; align-items: center; }
+  input[type=color] { width: 64px; height: 64px; border: 0; padding: 0; background: none; cursor: pointer; border-radius: 12px; }
+  input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+  input[type=color]::-webkit-color-swatch { border: 1px solid var(--rule); border-radius: 12px; }
+  .hex { font: 600 18px ui-monospace, Menlo, monospace; width: 130px; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); text-transform: lowercase; }
+  .hex.bad { border-color: var(--bad); }
+  .slider { margin-top: 12px; }
+  .presets { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .presets button { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--card); box-shadow: 0 0 0 1px var(--rule); cursor: pointer; padding: 0; transition: transform .15s; }
+  .presets button:hover { transform: scale(1.15); }
+  .summary { display: flex; gap: 18px; margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+  .summary b { color: var(--ink); font: 700 16px ui-monospace, Menlo, monospace; }
+  .slider label { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+  .slider output { font: 600 13px ui-monospace, Menlo, monospace; color: var(--ink); }
+  input[type=range] { width: 100%; -webkit-appearance: none; appearance: none; height: 12px; border-radius: 6px; margin-top: 6px; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid #222; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  .modes { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .modes button { font: 600 13px system-ui; padding: 7px 12px; border-radius: 99px; border: 1px solid var(--rule); background: transparent; color: var(--muted); cursor: pointer; }
+  .modes button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .regen { margin-left: auto; font: 600 13px system-ui; padding: 7px 14px; border-radius: 9px; border: 1px solid var(--rule); background: var(--card); color: var(--ink); cursor: pointer; }
+  .swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .sw { border-radius: 14px; height: 150px; position: relative; cursor: pointer; display: flex; flex-direction: column; justify-content: flex-end; padding: 10px 12px; transition: transform .25s cubic-bezier(.3,.7,.2,1), background-color .45s; border: 1px solid rgba(0,0,0,.06); }
+  .sw:hover { transform: translateY(-3px); }
+  .sw .role { font-size: 12px; font-weight: 600; opacity: .85; }
+  .sw .code { font: 700 15px ui-monospace, Menlo, monospace; }
+  .sw .lock { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 8px; border: 0; cursor: pointer; background: rgba(255,255,255,.25); color: inherit; font-size: 15px; }
+  .sw.locked .lock { background: rgba(0,0,0,.35); color: #fff; }
+  .scale { display: grid; grid-template-columns: repeat(10, 1fr); border-radius: 12px; overflow: hidden; }
+  .scale div { height: 64px; padding: 6px; font: 600 11px ui-monospace, Menlo, monospace; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; transition: background-color .45s; }
+  .matrix { display: grid; gap: 4px; font-size: 12px; }
+  .matrix .h { color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .matrix .h i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; border: 1px solid var(--rule); }
+  .cell { border-radius: 8px; padding: 8px; min-height: 58px; display: flex; flex-direction: column; justify-content: space-between; transition: background-color .45s; }
+  .cell b { font-size: 15px; }
+  .cell span { font: 700 10px ui-monospace, Menlo, monospace; padding: 1px 5px; border-radius: 4px; background: rgba(0,0,0,.55); color: #fff; align-self: flex-start; }
+  .cell span.aaa { background: #1c7c4a; } .cell span.aa { background: #1f4fa0; box-shadow: 0 0 0 1px rgba(255,255,255,.5); } .cell span.big { background: #a46a00; } .cell span.fail { background: #b3332a; }
+  .preview { border-radius: 14px; padding: 22px; transition: background-color .45s; }
+  .preview .pcard { border-radius: 12px; padding: 18px; max-width: 420px; box-shadow: 0 10px 30px -18px rgba(0,0,0,.5); }
+  .preview h3 { margin: 6px 0; font-size: 20px; }
+  .preview .tag { font: 700 11px system-ui; padding: 3px 8px; border-radius: 99px; display: inline-block; }
+  .preview .btns { display: flex; gap: 8px; margin-top: 14px; }
+  .preview .btns button { font: 600 14px system-ui; padding: 9px 16px; border-radius: 9px; border: 0; cursor: pointer; }
+  .preview a { font-weight: 600; }
+  pre { margin: 0; font: 13px/1.6 ui-monospace, Menlo, monospace; background: var(--bg); border: 1px solid var(--rule); border-radius: 10px; padding: 14px; overflow-x: auto; }
+  .row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .copy { font: 600 13px system-ui; padding: 7px 14px; border-radius: 9px; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); cursor: pointer; }
+  .toast { position: fixed; bottom: 26px; left: 50%; transform: translate(-50%, 20px); background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 10px; font-size: 14px; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .hint { color: var(--muted); font-size: 13px; }
+  @media (max-width: 800px) { .top { grid-template-columns: 1fr; } .swatches { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<main>
+  <div class="kicker">Colour tool</div>
+  <h1>Palette builder and contrast checker</h1>
+  <p class="lede">Pick a base colour, choose a harmony, lock what you like and regenerate the rest. Every text and background pair is checked against WCAG 2.1: AA needs 4.5:1 for body text (3:1 for large), AAA needs 7:1.</p>
+
+  <div class="top">
+    <div class="card">
+      <h2>Base colour</h2>
+      <div class="pick">
+        <input type="color" id="picker" value="#2f6fd0" aria-label="Base colour">
+        <input class="hex" id="hex" value="#2f6fd0" spellcheck="false" aria-label="Hex">
+      </div>
+      <div class="presets" id="presets"></div>
+      <div class="slider"><label>Hue <output id="hO"></output></label><input type="range" id="h" min="0" max="360" step="1"></div>
+      <div class="slider"><label>Saturation <output id="sO"></output></label><input type="range" id="s" min="0" max="100" step="1"></div>
+      <div class="slider"><label>Lightness <output id="lO"></output></label><input type="range" id="l" min="0" max="100" step="1"></div>
+    </div>
+    <div class="card">
+      <div class="modes" id="modes"></div>
+      <div class="swatches" id="swatches"></div>
+      <p class="hint">Click a swatch to copy its hex. Space regenerates the unlocked swatches.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Shades and tints of <span id="scaleOf">Primary</span></h2>
+    <div class="scale" id="scale"></div>
+  </div>
+
+  <div class="card">
+    <h2>Contrast matrix</h2>
+    <p class="hint" style="margin-top:-6px">Rows are the text colour, columns the background. Each cell shows "Aa" in that pair, its ratio and its grade.</p>
+    <div class="summary" id="summary"></div>
+    <div class="matrix" id="matrix"></div>
+  </div>
+
+  <div class="card">
+    <h2>Preview</h2>
+    <div class="preview" id="preview">
+      <div class="pcard" id="pcard">
+        <span class="tag" id="ptag">New</span>
+        <h3 id="ph">Quarterly report is ready</h3>
+        <p id="pp" style="margin:0">Your team at Fernhill Outdoor closed 42 orders this week. <a id="pa" href="#" onclick="return false">See the details</a>.</p>
+        <div class="btns"><button id="pb1">Open report</button><button id="pb2">Later</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row"><h2 style="margin:0">Export</h2><button class="copy" id="copyCss" style="margin-left:auto">Copy CSS</button></div>
+    <pre id="css"></pre>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+// ---------- colour maths ----------
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360; s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => { const k = (n + h / 30) % 12; return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+  return [f(0), f(8), f(4)].map(v => Math.round(v * 255));
+}
+const toHex = rgb => '#' + rgb.map(v => v.toString(16).padStart(2, '0')).join('');
+const hsl = (h, s, l) => toHex(hslToRgb(h, clamp(s, 0, 100), clamp(l, 0, 100)));
+function hexToRgb(hex) { const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim()); if (!m) return null; const n = parseInt(m[1], 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+function rgbToHsl([r, g, b]) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  let h = 0, s = 0;
+  if (d) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h = (h * 60 + 360) % 360;
+  }
+  return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
+}
+function luminance(hex) {
+  return hexToRgb(hex).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); })
+    .reduce((acc, v, i) => acc + v * [0.2126, 0.7152, 0.0722][i], 0);
+}
+const contrast = (a, b) => { const x = luminance(a), y = luminance(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+const inkOn = bg => contrast(bg, '#ffffff') >= contrast(bg, '#111318') ? '#ffffff' : '#111318';
+const grade = r => r >= 7 ? ['AAA', 'aaa'] : r >= 4.5 ? ['AA', 'aa'] : r >= 3 ? ['AA large', 'big'] : ['Fail', 'fail'];
+
+// ---------- state ----------
+const MODES = { Complementary: [0, 180, 200], Analogous: [0, 30, -30], Triadic: [0, 120, 240], 'Split complementary': [0, 150, 210] };
+const ROLES = ['Primary', 'Secondary', 'Accent', 'Neutral', 'Surface'];
+let base = [217, 63, 50];
+let mode = 'Complementary';
+let jitter = ROLES.map(() => [0, 0, 0]);
+let locked = {};                         // role -> hex
+let scaleRole = 'Primary';
+
+function palette() {
+  const [h, s, l] = base, off = MODES[mode];
+  const raw = {
+    Primary: [h, s, l],
+    Secondary: [h + off[1], s * 0.85, clamp(l, 35, 60)],
+    Accent: [h + off[2], clamp(s + 15, 0, 95), clamp(l + 6, 40, 65)],
+    Neutral: [h, s * 0.12, 42],
+    Surface: [h, s * 0.25, 97],
+  };
+  const out = {};
+  ROLES.forEach((r, i) => {
+    if (locked[r]) { out[r] = locked[r]; return; }
+    const [jh, js, jl] = r === 'Primary' ? [0, 0, 0] : jitter[i];
+    const [rh, rs, rl] = raw[r];
+    out[r] = hsl(rh + jh, rs + js, rl + jl);
+  });
+  return out;
+}
+function regenerate() {
+  jitter = ROLES.map(() => [Math.round((Math.random() - .5) * 30), Math.round((Math.random() - .5) * 24), Math.round((Math.random() - .5) * 16)]);
+  render();
+}
+
+// ---------- drawing ----------
+const $ = id => document.getElementById(id);
+function render() {
+  const p = palette();
+  const [h, s, l] = base;
+  const baseHex = hsl(h, s, l);
+  $('picker').value = baseHex;
+  if (document.activeElement !== $('hex')) $('hex').value = baseHex;
+  $('h').value = h; $('s').value = s; $('l').value = l;
+  $('hO').textContent = h + '°'; $('sO').textContent = s + '%'; $('lO').textContent = l + '%';
+  $('h').style.background = `linear-gradient(to right, ${[0, 60, 120, 180, 240, 300, 360].map(x => hsl(x, s, l)).join(',')})`;
+  $('s').style.background = `linear-gradient(to right, ${hsl(h, 0, l)}, ${hsl(h, 100, l)})`;
+  $('l').style.background = `linear-gradient(to right, #000, ${hsl(h, s, 50)}, #fff)`;
+
+  $('modes').innerHTML = Object.keys(MODES).map(m => `<button class="${m === mode ? 'on' : ''}" data-m="${m}">${m}</button>`).join('') + '<button class="regen" id="regen">⟳ Regenerate</button>';
+  $('modes').querySelectorAll('[data-m]').forEach(b => b.onclick = () => { mode = b.dataset.m; render(); });
+  $('regen').onclick = regenerate;
+
+  $('swatches').innerHTML = ROLES.map(r => `
+    <div class="sw ${locked[r] ? 'locked' : ''}" data-hex="${p[r]}" data-role="${r}" style="background:${p[r]};color:${inkOn(p[r])}">
+      <button class="lock" data-lock="${r}" title="${locked[r] ? 'Unlock' : 'Lock'}">${locked[r] ? '🔒' : '🔓'}</button>
+      <div class="role">${r}</div><div class="code">${p[r]}</div>
+    </div>`).join('');
+  $('swatches').querySelectorAll('.sw').forEach(el => el.onclick = e => {
+    if (e.target.dataset.lock) { const r = e.target.dataset.lock; locked[r] ? delete locked[r] : (locked[r] = p[r]); render(); return; }
+    scaleRole = el.dataset.role; copy(el.dataset.hex); render();
+  });
+
+  // shades and tints: the role's hue and saturation, lightness from 97% down to 16%
+  const [sh, ss] = rgbToHsl(hexToRgb(p[scaleRole]));
+  const steps = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900];
+  const lights = [97, 93, 85, 75, 63, 52, 43, 34, 25, 16];
+  const scale = steps.map((st, i) => [st, hsl(sh, ss * (i < 2 ? 0.9 : 1), lights[i])]);
+  $('scaleOf').textContent = scaleRole;
+  $('scale').innerHTML = scale.map(([st, c]) => `<div data-hex="${c}" style="background:${c};color:${inkOn(c)}"><span>${st}</span><span>${c}</span></div>`).join('');
+  $('scale').querySelectorAll('div').forEach(d => d.onclick = () => copy(d.dataset.hex));
+
+  // contrast matrix: every role, plus white and near-black
+  const cols = [['White', '#ffffff'], ...ROLES.map(r => [r, p[r]]), ['Ink', '#111318']];
+  const m = $('matrix');
+  m.style.gridTemplateColumns = `90px repeat(${cols.length}, 1fr)`;
+  let html = '<div></div>' + cols.map(([n, c]) => `<div class="h"><i style="background:${c}"></i>${n}</div>`).join('');
+  for (const [fn, fc] of cols) {
+    html += `<div class="h"><i style="background:${fc}"></i>${fn}</div>`;
+    for (const [, bc] of cols) {
+      if (fc === bc) { html += `<div class="cell" style="background:${bc};opacity:.25"></div>`; continue; }
+      const r = contrast(fc, bc), [g, cls] = grade(r);
+      html += `<div class="cell" style="background:${bc};color:${fc}" title="${fc} on ${bc}"><b>Aa</b><div style="display:flex;justify-content:space-between;align-items:center"><small style="font:600 11px ui-monospace,monospace;color:${inkOn(bc)};opacity:.8">${r.toFixed(2)}</small><span class="${cls}">${g}</span></div></div>`;
+    }
+  }
+  m.innerHTML = html;
+  // how many pairs pass, of the pairs of different colours
+  const pairs = cols.flatMap(([, a]) => cols.filter(([, b]) => b !== a).map(([, b]) => contrast(a, b)));
+  const n = t => pairs.filter(r => r >= t).length;
+  $('summary').innerHTML = `<span><b>${n(7)}</b> pass AAA</span><span><b>${n(4.5)}</b> pass AA</span><span><b>${n(3)}</b> pass AA large</span><span><b>${pairs.length - n(3)}</b> fail</span><span>of ${pairs.length} pairs</span>`;
+
+  // preview
+  $('preview').style.background = p.Surface;
+  const card = '#ffffff';
+  $('pcard').style.background = card; $('pcard').style.color = '#111318';
+  $('ph').style.color = scale[8][1];
+  $('pp').style.color = p.Neutral;
+  $('pa').style.color = scale[6][1];
+  $('ptag').style.background = p.Accent; $('ptag').style.color = inkOn(p.Accent);
+  $('pb1').style.background = p.Primary; $('pb1').style.color = inkOn(p.Primary);
+  $('pb2').style.background = p.Secondary; $('pb2').style.color = inkOn(p.Secondary);
+
+  $('css').textContent = ':root {\n' + ROLES.map(r => `  --${r.toLowerCase()}: ${p[r]};`).join('\n') + '\n' +
+    scale.map(([st, c]) => `  --${scaleRole.toLowerCase()}-${st}: ${c};`).join('\n') + '\n}';
+}
+
+// ---------- clipboard ----------
+let toastTimer;
+async function copy(text, what) {
+  try { await navigator.clipboard.writeText(text); } catch { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+  const el = $('toast'); el.textContent = 'Copied ' + (what || text); el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 1400);
+}
+$('copyCss').onclick = () => copy($('css').textContent, 'CSS variables');
+
+// ---------- inputs ----------
+const PRESETS = ['#2f6fd0', '#d9473a', '#2f8f5b', '#7b4fd6', '#e39a00', '#0f8a8a', '#c2367a', '#3a4452'];
+$('presets').innerHTML = PRESETS.map(c => `<button style="background:${c}" data-c="${c}" title="${c}"></button>`).join('');
+$('presets').querySelectorAll('button').forEach(b => b.onclick = () => { base = rgbToHsl(hexToRgb(b.dataset.c)); jitter = ROLES.map(() => [0, 0, 0]); render(); });
+$('picker').addEventListener('input', e => { base = rgbToHsl(hexToRgb(e.target.value)); render(); });
+$('hex').addEventListener('input', e => {
+  const rgb = hexToRgb(e.target.value.startsWith('#') ? e.target.value : '#' + e.target.value);
+  e.target.classList.toggle('bad', !rgb);
+  if (rgb) { base = rgbToHsl(rgb); render(); }
+});
+$('hex').addEventListener('blur', render);
+['h', 's', 'l'].forEach((k, i) => $(k).addEventListener('input', e => { base[i] = +e.target.value; render(); }));
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !/INPUT|BUTTON/.test(document.activeElement.tagName)) { e.preventDefault(); regenerate(); }
+});
+
+render();
+</script>
+</body>
+</html>

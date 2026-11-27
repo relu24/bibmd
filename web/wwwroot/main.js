@@ -37,6 +37,14 @@ const imports = {
   ready: () => ready(),
   png: async (source) => base64(await toPng(await (hosted ? askImage(source) : fetchImage(source)))),
   navigate: (link) => hosted ? toParent({ t: 'link', href: link }) : navigate(link),
+  // A document's download(): the browser saves it, as any download.
+  download: (name, text) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  },
   changed: (text) => {
     retitle(text);
     if (live) live.changed(text); else if (hosted) toParent({ t: 'changed', text });

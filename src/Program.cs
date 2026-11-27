@@ -17,6 +17,7 @@
 //   rclick:block-3   the same with the right button
 //   wheel:side-Keys:300  the wheel over a box by id, that far down (negative: up)
 //   move:block-3     the pointer to the middle of a box by id, nothing pressed
+//   move:bib-plot-0@0.3,0.5   the pointer that far across and down a box (0 to 1 of its width and height)
 //   wait:500         frames for half a second (images load, scrolling settles)
 //   drag:md-3:200    press at the start of a box's first line and drag that far right (selects text)
 //
@@ -25,7 +26,7 @@
 // characters a frame. Steps for it:
 //   glide:640,400:600  the pointer to a point over that many ms, the button held if it is down
 //   down / up          the left button pressed / let go where the pointer is
-//   scroll:-12         the wheel where the pointer is, in half notches a frame (negative: down; a notch is 32 px)
+//   scroll:-12         the wheel where the pointer is, in half notches a frame (negative: down; a notch is three lines of the page)
 //   hold:1500          that many ms of frames, nothing done
 //   theme:rose-pine    crossfade to an installed Omarchy theme, as the window does when the desktop's changes
 
@@ -55,7 +56,13 @@ var doc = new Document(file);
 string title = Path.GetFileName(doc.Path) + " — md";
 
 int pngAt = Array.IndexOf(args, "--png");
-if (pngAt >= 0) return Headless(args[pngAt + 1]);
+if (pngAt >= 0)
+{
+    // A picture is drawn, not read: a script's download() goes to a folder in /tmp, not the reader's Downloads.
+    if (Environment.GetEnvironmentVariable("XDG_DOWNLOAD_DIR") is not { Length: > 0 })
+        Environment.SetEnvironmentVariable("XDG_DOWNLOAD_DIR", Path.Combine(Path.GetTempPath(), "bibmd-downloads"));
+    return Headless(args[pngAt + 1]);
+}
 
 if (!WaylandWindow.IsSupported)
 {
@@ -235,7 +242,11 @@ int Headless(string png)
                     var mods = KeyModifiers.None;
                     var parts = arg.Split('+');
                     foreach (var m in parts[..^1]) mods |= m switch { "Ctrl" => KeyModifiers.Ctrl, "Shift" => KeyModifiers.Shift, "Alt" => KeyModifiers.Alt, _ => KeyModifiers.None };
-                    Frame(WindowEvent.KeyPress(Enum.Parse<Key>(parts[^1]), mods));
+                    // A digit or letter as itself (key:2, key:k), else bibui's name (key:Space, key:Left).
+                    var named = parts[^1].Length == 1 ? KeyOf(new Rune(parts[^1][0]))
+                        : Enum.TryParse<Key>(parts[^1], ignoreCase: true, out var kk) ? kk : Key.Unknown;
+                    if (named == Key.Unknown) { Console.Error.WriteLine($"no key {parts[^1]}"); return 1; }
+                    Frame(WindowEvent.KeyPress(named, mods));
                     break;
                 }
                 case "wheel":
@@ -249,8 +260,14 @@ int Headless(string png)
                 }
                 case "move":
                 {
-                    if (runtime.FindById(arg) is not { } node) { Console.Error.WriteLine($"no box {arg}"); return 1; }
-                    Frame(WindowEvent.Mouse(WindowEventKind.MouseMove, node.Rect.X + node.Extent.X / 2f, node.Rect.Y + node.Extent.Y / 2f, MouseButton.Left));
+                    var (id, fx, fy) = (arg, 0.5f, 0.5f);
+                    if (arg.LastIndexOf('@') is var at and > 0)
+                    {
+                        var f = arg[(at + 1)..].Split(',').Select(v => float.Parse(v, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+                        (id, fx, fy) = (arg[..at], f[0], f.Length > 1 ? f[1] : 0.5f);
+                    }
+                    if (runtime.FindById(id) is not { } node) { Console.Error.WriteLine($"no box {id}"); return 1; }
+                    Frame(WindowEvent.Mouse(WindowEventKind.MouseMove, node.Rect.X + node.Extent.X * fx, node.Rect.Y + node.Extent.Y * fy, MouseButton.Left));
                     break;
                 }
                 case "drag":

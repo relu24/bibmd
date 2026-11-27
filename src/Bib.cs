@@ -20,11 +20,17 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
 
     private readonly BibProgram _program = shared ?? new BibProgram();
     private FrameResult? _frame;
+    private Timer? _wake;         // wakes the window for the clock or the next alarm
+    private readonly List<(string Id, Box Box)> _idBoxes = [];    // this frame's boxes with an id, laid out by the next
+    private (float X, float Y) _pointer = (float.NaN, float.NaN); // where the pointer was last seen over a box with an id
+    private readonly List<(string Id, Box Box)> _around = [];    // the boxes with an id being drawn, outermost first
+    private bool _pointerSeen;                                    // a box with an id saw the pointer this frame
     private readonly Dictionary<int, int> _ordinal = [];          // document block -> bib block
     private readonly Dictionary<int, List<UiNode>> _widgets = []; // bib block -> its widgets, drawn this frame
-    private readonly Dictionary<string, (BibuiStr Text, TextEditState Edit)> _fields = [];
+    private readonly Dictionary<string, (BibuiStr Text, TextEditState Edit, string Seen)> _fields = [];   // Seen: the value the field last showed or gave
     private readonly HashSet<string> _fieldIds = [];                // this frame's text inputs, by box id
     private int _ids;                                             // ids for this frame's unnamed nodes
+    private int _plots;                                           // this frame's plots, in order: each a box of its own across frames
     private int _sizeIndex = 1;
 
     /// <summary>A text input of a bib block has the keyboard: the reader's keys are not commands.</summary>
@@ -46,7 +52,18 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         _ordinal.Clear();
         _widgets.Clear();
         _fieldIds.Clear();
+        _around.Clear();
         _ids = 0;
+        _plots = 0;
+        // The boxes with an id under the pointer, as the last frame laid them out (all of them during a
+        // drag, which bibui gives to the box it started on).
+        if (!_pointerSeen) _pointer = (float.NaN, float.NaN);
+        _pointerSeen = false;
+        var hovered = new HashSet<string>();
+        foreach (var (id, b) in _idBoxes)
+            if (_pointer.X >= b.Rect.X && _pointer.X < b.Rect.X + b.Extent.X && _pointer.Y >= b.Rect.Y && _pointer.Y < b.Rect.Y + b.Extent.Y)
+                hovered.Add(id);
+        _idBoxes.Clear();
         var sources = new List<string>();
         var dataBlocks = new List<string>();
         string? front = null;
@@ -61,7 +78,73 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 sources.Add(Body(doc.Source(b)));
             }
         }
-        _frame = _program.Frame(front, dataBlocks, sources);
+        _frame = _program.Frame(front, dataBlocks, sources, this, hovered);
+        if (_frame is not null) Ring(DateTimeOffset.Now);
+    }
+
+    // The alarms whose time has come ring, once each; then the window is woken for the clock or the next one.
+    private void Ring(DateTimeOffset now)
+    {
+        if (_frame is null || _program.Session is not { } session) return;
+        double secs = now.ToUnixTimeMilliseconds() / 1000.0;
+        bool rang = false;
+        foreach (double at in _frame.Alarms.Distinct().Order())
+        {
+            if (at > secs || !_program.Rang.Add(at)) continue;
+            var result = session.Fire(new DocEvent("alarm", DocEvent.AlarmName(at)));
+            rang = true;
+            if (result.Effects.Count > 0 || result.Errors.Any(e => e is not null)) Told(-1, result, "alarm");
+        }
+        if (rang) _program.Touch();
+        double? next = _frame.Every;
+        foreach (double at in _frame.Alarms)
+            if (at > secs && !_program.Rang.Contains(at)) next = Math.Min(next ?? double.MaxValue, at - secs);
+        _wake?.Dispose();
+        _wake = next is { } wait
+            ? new Timer(_ => runtime.RequestFrame(), null, TimeSpan.FromSeconds(Math.Clamp(wait, 0.016, 3600)), Timeout.InfiniteTimeSpan)
+            : null;
+        if (rang) runtime.RequestFrame();
+    }
+
+    /// <summary>
+    /// A key the document asked for (key() or a button's key:) goes to it, and is taken; any other is the reader's.
+    /// </summary>
+    public bool Key(BibUiEvent ev)
+    {
+        if (_frame is null || _program.Session is null || _frame.Keys.Count == 0 || KeyName(ev) is not { } name) return false;
+        if (!_frame.Keys.Contains(name)) return false;
+        Fire(-1, new DocEvent("key", name), what: "key");
+        return true;
+    }
+
+    // A key as a reader knows it: "ctrl+z" is Ctrl+Z, "left" ←, "space" Space.
+    private static string KeyCap(string name) => string.Join("+", name.Split('+').Select(p => p switch
+    {
+        "left" => "←", "right" => "→", "up" => "↑", "down" => "↓", "enter" => "↵", "escape" => "Esc",
+        "ctrl" or "alt" or "shift" or "space" or "tab" or "delete" or "backspace" or "home" or "end" => char.ToUpperInvariant(p[0]) + p[1..],
+        _ => p.ToUpperInvariant(),
+    }));
+
+    private static string? KeyName(BibUiEvent ev)
+    {
+        string? key = ev.Key switch
+        {
+            >= Bibui.Core.Key.A and <= Bibui.Core.Key.Z => ((char)('a' + (ev.Key - Bibui.Core.Key.A))).ToString(),
+            >= Bibui.Core.Key.Number0 and <= Bibui.Core.Key.Number9 => ((char)('0' + (ev.Key - Bibui.Core.Key.Number0))).ToString(),
+            >= Bibui.Core.Key.F1 and <= Bibui.Core.Key.F12 => "f" + (ev.Key - Bibui.Core.Key.F1 + 1),
+            Bibui.Core.Key.Space => "space", Bibui.Core.Key.Enter or Bibui.Core.Key.KeypadEnter => "enter",
+            Bibui.Core.Key.Escape => "escape", Bibui.Core.Key.Tab => "tab", Bibui.Core.Key.Backspace => "backspace",
+            Bibui.Core.Key.Delete => "delete", Bibui.Core.Key.Left => "left", Bibui.Core.Key.Right => "right",
+            Bibui.Core.Key.Up => "up", Bibui.Core.Key.Down => "down", Bibui.Core.Key.Home => "home", Bibui.Core.Key.End => "end",
+            Bibui.Core.Key.PageUp => "pageup", Bibui.Core.Key.PageDown => "pagedown",
+            Bibui.Core.Key.Minus => "-", Bibui.Core.Key.Equal => "=", Bibui.Core.Key.Comma => ",", Bibui.Core.Key.Period => ".",
+            Bibui.Core.Key.Slash => "/", Bibui.Core.Key.LeftBracket => "[", Bibui.Core.Key.RightBracket => "]",
+            _ => null,
+        };
+        if (key is null) return null;
+        var m = ev.Modifiers;
+        return DocEvent.KeyName(((m & KeyModifiers.Ctrl) != 0 ? "ctrl+" : "") + ((m & KeyModifiers.Alt) != 0 ? "alt+" : "")
+            + ((m & KeyModifiers.Shift) != 0 ? "shift+" : "") + key);
     }
 
     /// <summary>
@@ -70,7 +153,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
     /// </summary>
     public bool View(int index, float width)
     {
-        if (_frame is null || !_ordinal.TryGetValue(index, out int k)) return false;
+        if (_frame is null || _program.Session is null || !_ordinal.TryGetValue(index, out int k)) return false;
         _widgets[k] = [];
         var col = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
         if (k == 0 && _program.DataError is { } de) Problem("Front matter: " + de, width);
@@ -124,6 +207,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         "warning" => Amber,
         "accent" or "primary" => UiColor.Accent,
         "muted" => UiColor.TextSecondary,
+        ['#', ..] => Colour(n.Text("tone"), otherwise),
         _ => otherwise,
     };
 
@@ -167,7 +251,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             case "box":
                 DrawBox(n, k, width);
                 break;
-            case "layer" or "line" or "rect" or "circle" or "label":
+            case "layer" or "line" or "rect" or "circle" or "label" or "arc" or "path":
                 break;   // drawn by the box they are in
             case "heading":
                 Wrapped(n.Text("text") ?? "", width, Larger, UiColor.TextPrimary, FontWeight.Bold);
@@ -221,6 +305,12 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             case "bars":
                 Bars(n, width);
                 break;
+            case "pie":
+                Pie(n, width);
+                break;
+            case "heatmap":
+                Heatmap(n, width);
+                break;
             case "tabs":
             {
                 // The strip, then the panel holding the tab that shows: only its block ran. The label
@@ -252,7 +342,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 var row = runtime.BeginParent(runtime.Row());
                 foreach (var child in n.Children)
                 {
-                    float w = Measure(child, width);
+                    float w = Want(child, width) ?? width;
                     if (used > 0f && used + between + w > width)
                     {
                         runtime.EndParent(row);
@@ -261,7 +351,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                         used = 0f;
                     }
                     if (used > 0f) runtime.Gap(between);
-                    Draw(child, k, width);
+                    Draw(child, k, w);
                     used += (used > 0f ? between : 0f) + w;
                 }
                 runtime.EndParent(row);
@@ -338,7 +428,18 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                     runtime.Gap(6f);
                     runtime.Text(unit, Smaller, UiColor.TextSecondary);
                 }
+                if (n.Props.GetValueOrDefault("delta") is double delta)
+                {
+                    runtime.Gap(10f);
+                    var change = runtime.BeginParent(runtime.Column());
+                    runtime.Spacer(Size.Px(MathF.Round(runtime.FontInScope(Larger).Size * 1.3f - runtime.FontInScope(Smaller).Size * 1.3f - 2f)));
+                    var mark = runtime.BeginParent(runtime.Row());
+                    Delta(delta);
+                    runtime.EndParent(mark);
+                    runtime.EndParent(change);
+                }
                 runtime.EndParent(line);
+                if (n.Props.GetValueOrDefault("spark") is List<object?> spark) Spark(spark, n.Text("tone"), width);
                 runtime.EndParent(col);
                 break;
             }
@@ -370,7 +471,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 break;
             }
             case "table":
-                Table(n, width);
+                Table(n, k, width);
                 break;
             case "list":
                 List(n, k, width);
@@ -381,8 +482,11 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             case "button":
             {
                 var row = runtime.BeginParent(runtime.Row());
-                var b = runtime.Button("bib-" + n.Key, n.Text("label") ?? "",
-                    ghost: n.Text("style") == "ghost", disabled: Values.Truthy(n.Props.GetValueOrDefault("disabled")));
+                string label = n.Text("label") ?? "";
+                if (n.Text("key") is { } shortcut) label += "  " + KeyCap(shortcut);   // the key that presses it, after its label
+                var b = runtime.Button("bib-" + n.Key, label,
+                    ghost: n.Text("style") == "ghost", disabled: Values.Truthy(n.Props.GetValueOrDefault("disabled")),
+                    emphasis: n.Text("style") switch { "primary" => ButtonEmphasis.Primary, "danger" => ButtonEmphasis.Danger, _ => ButtonEmphasis.None });
                 runtime.EndParent(row);
                 Claim(k, b.Node);
                 if (b.Clicked && n.Key is { } key) Click(k, key);
@@ -430,6 +534,16 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 if (Math.Abs(moved - value) > Math.Pow(10, -decimals) / 2) Set(n, moved);
                 break;
             }
+            case "colour":
+            {
+                // A swatch and its hex, opening bibui's picker.
+                var swatches = (n.Props.GetValueOrDefault("swatches") as List<object?> ?? []).Select(Values.Str).ToList();
+                var picker = runtime.ColorPicker("bib-" + n.Key, Values.Str(n.Props.GetValueOrDefault("value")),
+                    swatches.Count > 0 ? swatches : null, n.Text("label") ?? "", size: Size0);
+                Claim(k, picker.Node);
+                if (picker.Changed) Set(n, picker.Value);
+                break;
+            }
             case "toggle":
             {
                 bool on = Values.Truthy(n.Props.GetValueOrDefault("value"));
@@ -474,11 +588,16 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             "text" => MathF.Min(width, Text.Width(runtime, n.Text("text") ?? "", font)),
             "chips" => MathF.Min(width, (n.Props.GetValueOrDefault("items") as List<object?> ?? [])
                 .Sum(i => Text.Width(runtime, Values.Str(i), runtime.FontInScope(Smaller, FontSlot.Mono)) + 20f)),
-            "button" => Text.Width(runtime, n.Text("label") ?? "", font) + 40f,
+            "button" => Text.Width(runtime, (n.Text("label") ?? "") + (n.Text("key") is { } cap ? "  " + KeyCap(cap) : ""), font) + 40f,
+            "choice" when n.Text("style") == "segmented" => MathF.Min(width, MathF.Max(
+                Text.Width(runtime, n.Text("label") ?? "", runtime.FontInScope(Smaller)),
+                (n.Props.GetValueOrDefault("options") as List<object?> ?? []).Sum(o => Text.Width(runtime, Values.Str(o), font) + 26f) + 4f)),
             // Its label, or its number (bold, a little wider than measured) and unit.
             "stat" => MathF.Min(width, MathF.Max(Text.Width(runtime, n.Text("label") ?? "", runtime.FontInScope(Smaller)),
                 Text.Width(runtime, Number(n.Props.GetValueOrDefault("value")), runtime.FontInScope(Larger)) * 1.08f
-                + (n.Text("unit") is { } unit ? 6f + Text.Width(runtime, unit, runtime.FontInScope(Smaller)) : 0f)) + 4f),
+                + (n.Text("unit") is { } unit ? 6f + Text.Width(runtime, unit, runtime.FontInScope(Smaller)) : 0f)
+                + (n.Props.GetValueOrDefault("delta") is double delta
+                    ? 10f + MathF.Round(runtime.FontInScope(Smaller).Size * 0.6f) + 4f + Text.Width(runtime, DeltaText(delta), runtime.FontInScope(Smaller)) * 1.08f : 0f)) + 4f),
             _ => width,   // anything else takes a line of its own
         };
     }
@@ -588,7 +707,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             case "text":
                 if (n.Text("width") == "fill") return null;
                 return MathF.Min(room, Text.Width(runtime, TextOf(n), runtime.FontInScope(TextSize(n.Props.GetValueOrDefault("size")), Face(n.Text("face")))) + 1f);
-            case "markdown" or "table" or "list" or "card" or "grid" or "steps" or "kv" or "tabs" or "plot" or "bars":
+            case "markdown" or "table" or "list" or "card" or "grid" or "steps" or "kv" or "tabs" or "plot" or "bars" or "pie" or "heatmap" or "input":
                 return null;
             default:
                 return Measure(n, room);
@@ -602,8 +721,10 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         float? h = Px(n.Props.GetValueOrDefault("height"));
         bool row = n.Text("dir") == "row";
         float gap = Px(n.Props.GetValueOrDefault("gap")) ?? 0f;
-        Box box = runtime.Box();
-        box.ChildLayoutAxis = row ? LayoutAxis.X : LayoutAxis.Y;
+        Box box = n.Key is { } boxId ? runtime.BoxFromId("bibbox-" + boxId, InteractionKinds.LeftPress | InteractionKinds.RightPress) : runtime.Box();
+        bool wraps = row && n.Props.GetValueOrDefault("wrap") is true;
+        // A row that wraps is a column of lines, each a row.
+        box.ChildLayoutAxis = row && !wraps ? LayoutAxis.X : LayoutAxis.Y;
         box.SizeX = SemanticSize.Pixels(w);
         box.SizeY = h is { } hh ? SemanticSize.Pixels(hh) : SemanticSize.ChildrenSum();
         box.Style.Padding = pad;
@@ -615,6 +736,8 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         }
         if (Px(n.Props.GetValueOrDefault("radius")) is { } r) box.Style.CornerRadius = r;
         if (Px(n.Props.GetValueOrDefault("opacity")) is { } o) box.Style.Opacity = o;
+        // Given a size in px, a box keeps to it: what does not fit is cut off, not laid over its neighbours.
+        if (Px(n.Props.GetValueOrDefault("width")) is not null || h is not null) box.Claims |= InteractionKinds.Clip;
         // A layer draws under the children, clipped to the box: w and h are the box's size.
         if (n.Children.FirstOrDefault(c => c.Type == "layer") is { } layer)
         {
@@ -626,6 +749,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         // Centring needs a size of its own along that axis: only a box given one centres.
         bool along = n.Text("justify") == "center" && (row ? Px(n.Props.GetValueOrDefault("width")) : h) is not null;
         bool across = n.Text("align") == "center" && (row ? h : (float?)w) is not null;
+        if (n.Key is { } around) _around.Add((around, box));
         using (runtime.Parent(box))
         {
             if (along) runtime.Spacer(Size.Fill);
@@ -642,6 +766,12 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 }
             }
             if (along) runtime.Spacer(Size.Fill);
+        }
+        // After its children: a box with an id inside it asks about the pointer first, so a press on it is its own.
+        if (n.Key is not null)
+        {
+            _around.RemoveAt(_around.Count - 1);
+            Pointer(n, k, box);
         }
     }
 
@@ -685,10 +815,11 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
 
     private void Cell(FrameNode child, int k, float width, bool across)
     {
-        var cell = runtime.BeginParent(runtime.Column().Sized(Size.Px(width)));
-        if (across) runtime.BeginCenterAcross();
+        // Centred across a row: the cell is as tall as the row, and the child sits in its middle.
+        var cell = runtime.BeginParent(runtime.Column().Sized(Size.Px(width), across ? Size.Fill : Size.Fit));
+        if (across) runtime.Spacer(Size.Fill);
         Draw(child, k, width);
-        if (across) runtime.EndCenterAcross();
+        if (across) runtime.Spacer(Size.Fill);
         runtime.EndParent(cell);
     }
 
@@ -720,9 +851,19 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         {
             var p = s.Props;
             float stroke = (float)(p.GetValueOrDefault("width") is double sw ? sw : 1d) * sc;
-            Rgba? edge = p.ContainsKey("color") || s.Type == "line" ? ctx.Resolve(Colour(p.GetValueOrDefault("color") ?? "border", UiColor.Border)) : null;
+            // A line is stroked in the border's colour unless it says otherwise, an arc in the accent,
+            // a path when it is not filled; the rest only when given a colour.
+            Rgba? edge = p.ContainsKey("color") || s.Type is "line" or "arc" || (s.Type == "path" && !p.ContainsKey("fill"))
+                ? ctx.Resolve(Colour(p.GetValueOrDefault("color") ?? (s.Type == "arc" ? "accent" : "border"), UiColor.Border)) : null;
             Rgba? fill = p.GetValueOrDefault("fill") is { } f ? ctx.Resolve(Colour(f, UiColor.SurfaceRaised)) : null;
-            var paint = new Paint { Fill = fill, Stroke = edge, StrokeWidth = stroke };
+            var paint = new Paint
+            {
+                Fill = fill, Stroke = edge, StrokeWidth = stroke,
+                Dash = p.GetValueOrDefault("dash") is List<object?> { Count: 2 } dash && dash[0] is double on && dash[1] is double off && on > 0 && off > 0
+                    ? new DashPattern((float)on * sc, (float)off * sc) : null,
+                Cap = Values.Str(p.GetValueOrDefault("cap")) switch { "round" => StrokeCap.Round, "square" => StrokeCap.Square, _ => StrokeCap.Butt },
+                Join = StrokeJoin.Round,
+            };
             switch (s.Type)
             {
                 case "line":
@@ -747,6 +888,58 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                     path.ArcTo(r, r, 0f, false, true, cx + r, cy);
                     path.Close();
                     ctx.DrawPath(path, paint);
+                    break;
+                }
+                case "arc":
+                {
+                    // Turns from the top, clockwise: arc(cx, cy, r, 0, 0.75) is three quarters of a ring.
+                    double from = Values.Num(p.GetValueOrDefault("from")), to = Values.Num(p.GetValueOrDefault("to"));
+                    if (!double.IsFinite(from) || !double.IsFinite(to) || from == to) break;
+                    if (Math.Abs(to - from) > 1) to = from + Math.Sign(to - from);
+                    var path = ctx.ScratchPath();
+                    Around(path, At(p.GetValueOrDefault("cx"), false) * sc, At(p.GetValueOrDefault("cy"), true) * sc,
+                        At(p.GetValueOrDefault("r"), false) * sc, from, to, move: true);
+                    ctx.DrawPath(path, paint with { Fill = null });
+                    break;
+                }
+                case "path" when p.GetValueOrDefault("points") is List<object?> pts:
+                {
+                    var at = pts.OfType<List<object?>>().Select(pt => (X: At(pt[0], false) * sc, Y: At(pt[1], true) * sc)).ToList();
+                    if (at.Count < 2) break;
+                    bool closed = Values.Truthy(p.GetValueOrDefault("closed"));
+                    string arrow = closed ? "" : Values.Str(p.GetValueOrDefault("arrow"));
+                    // An arrowhead, as long as four strokes and seven px at least, in the stroke's
+                    // colour; the line stops short of its tip so a wide stroke does not show past it.
+                    float head = MathF.Max(7f * sc, stroke * 4f);
+                    var tips = new List<((float X, float Y) Tip, (float X, float Y) From)>();
+                    if (arrow is "end" or "both") tips.Add((at[^1], at[^2]));
+                    if (arrow is "start" or "both") tips.Add((at[0], at[1]));
+                    (float, float) Back((float X, float Y) tip, (float X, float Y) from, float by)
+                    {
+                        float dx = tip.X - from.X, dy = tip.Y - from.Y, len = MathF.Max(1e-3f, MathF.Sqrt(dx * dx + dy * dy));
+                        return (tip.X - dx / len * by, tip.Y - dy / len * by);
+                    }
+                    var line = new List<(float X, float Y)>(at);
+                    if (arrow is "end" or "both") line[^1] = Back(at[^1], at[^2], head * 0.7f);
+                    if (arrow is "start" or "both") line[0] = Back(at[0], at[1], head * 0.7f);
+                    var path = ctx.ScratchPath();
+                    path.MoveTo(line[0].X, line[0].Y);
+                    foreach (var pt in line.Skip(1)) path.LineTo(pt.X, pt.Y);
+                    if (closed) path.Close();
+                    ctx.DrawPath(path, paint);
+                    if (edge is { } tone)
+                        foreach (var (tip, from) in tips)
+                        {
+                            float dx = tip.X - from.X, dy = tip.Y - from.Y, len = MathF.Max(1e-3f, MathF.Sqrt(dx * dx + dy * dy));
+                            float ux = dx / len, uy = dy / len, half = head * 0.5f;
+                            float bx = tip.X - ux * head, by = tip.Y - uy * head;
+                            var tri = ctx.ScratchPath();
+                            tri.MoveTo(tip.X, tip.Y);
+                            tri.LineTo(bx - uy * half, by + ux * half);
+                            tri.LineTo(bx + uy * half, by - ux * half);
+                            tri.Close();
+                            ctx.DrawPath(tri, new Paint { Fill = tone });
+                        }
                     break;
                 }
                 case "label" when labels.TryGetValue(s, out var label):
@@ -956,7 +1149,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         _ => Values.Str(v),
     };
 
-    private void Table(FrameNode n, float width)
+    private void Table(FrameNode n, int k, float width)
     {
         var columns = n.Props.GetValueOrDefault("columns") as List<object?> ?? [];
         var rows = n.Props.GetValueOrDefault("rows") as List<object?> ?? [];
@@ -966,6 +1159,15 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         while (weights.Count < count) weights.Add(weights.Count == 0 ? 1 : weights.Average());
         double total = weights.Take(count).Sum();
         float[] cellWidths = weights.Take(count).Select(w => MathF.Floor((float)(width * w / total))).ToArray();
+        var align = n.Props.GetValueOrDefault("align") as List<object?> ?? [];
+        bool End(int i) => Values.Str(align.ElementAtOrDefault(i)) == "end";
+        // A table that sorts or pages is an input (the interpreter sorted and cut its rows): {sort, desc, page}.
+        var st = n.Key is null ? null : n.Props.GetValueOrDefault("value") as Dictionary<string, object?>;
+        bool sortable = st is not null && Values.Truthy(n.Props.GetValueOrDefault("sort"));
+        int? by = st?.GetValueOrDefault("sort") is double c ? (int)c : null;
+        bool desc = Values.Truthy(st?.GetValueOrDefault("desc"));
+        int page = st?.GetValueOrDefault("page") is double p ? (int)p : 1;
+        int pages = n.Props.GetValueOrDefault("pages") is double ps ? (int)ps : 1;
         const float CellGap = 12f;   // room between a cell's text and the next column
         var table = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
         // Each cell wraps at its column's width, so a row is as tall as its longest cell.
@@ -975,27 +1177,88 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             row.Style.Padding = EdgeInsets.Symmetric(horizontal: 0f, vertical: 6f);
             for (int i = 0; i < count; i++)
             {
-                var cell = runtime.BeginParent(runtime.Column().Sized(Size.Px(cellWidths[i])));
                 var v = i < cells.Count ? cells[i] : null;
-                if (!head && v is Dictionary<string, object?> rec && rec.TryGetValue("badge", out var pill))
+                var rec = head ? null : v as Dictionary<string, object?>;
+                Box cell;
+                if (head && sortable)
+                {
+                    // A column's head sorts by it; again, the other way.
+                    cell = runtime.BoxFromId($"bib-th-{n.Key}-{i}", InteractionKinds.LeftPress);
+                    cell.Sized(Size.Px(cellWidths[i]), Size.Fit);
+                    cell.ChildLayoutAxis = LayoutAxis.Y;
+                    cell.Style.HoverBackgroundColor = UiColor.SurfaceRaised;
+                    cell.Style.CornerRadius = 4f;
+                    var ia = runtime.InteractionsFor(cell);
+                    if (ia.Clicked) Set(n, new Dictionary<string, object?> { ["sort"] = (double)i, ["desc"] = by == i && !desc, ["page"] = 1d });
+                    Claim(k, cell);
+                    runtime.BeginParent(cell);
+                }
+                else cell = runtime.BeginParent(runtime.Column().Sized(Size.Px(cellWidths[i])));
+                if (rec?.GetValueOrDefault("background") is { } bg)
+                {
+                    cell.Style.BackgroundColor = Colour(bg, UiColor.SurfaceRaised);
+                    cell.Style.CornerRadius = 4f;
+                    cell.Style.Padding = EdgeInsets.Symmetric(horizontal: 6f, vertical: 2f);
+                }
+                var line = End(i) ? runtime.BeginParent(runtime.Row().Sized(Size.Px(cellWidths[i] - CellGap - (rec?.ContainsKey("background") == true ? 12f : 0f)), Size.Fit)) : null;
+                if (line is not null) runtime.Spacer(Size.Fill);
+                if (rec is not null && rec.TryGetValue("badge", out var pill))
                 {
                     var holder = runtime.BeginParent(runtime.Row());
                     Pill(Values.Str(pill), rec.TryGetValue("tone", out var t) && t is not null ? Values.Str(t) : null);
                     runtime.EndParent(holder);
-                    runtime.EndParent(cell);
-                    continue;
                 }
-                Wrapped(head ? Values.Str(v) : Number(v), cellWidths[i] - CellGap, Smaller,
-                    head ? UiColor.TextSecondary : UiColor.TextPrimary, head ? FontWeight.Bold : FontWeight.Regular);
+                else
+                {
+                    string text = head ? Values.Str(v) + (by == i ? (desc ? " ▼" : " ▲") : "")
+                        : Number(rec is not null ? rec.GetValueOrDefault("text") ?? rec.GetValueOrDefault("value") : v);
+                    var ink = head ? UiColor.TextSecondary : rec?.GetValueOrDefault("color") is { } col ? Colour(col, UiColor.TextPrimary) : UiColor.TextPrimary;
+                    if (line is not null) runtime.Text(text, Smaller, ink, weight: head ? FontWeight.Bold : FontWeight.Regular);
+                    else Wrapped(text, cellWidths[i] - CellGap, Smaller, ink, head ? FontWeight.Bold : FontWeight.Regular);
+                }
+                if (line is not null) runtime.EndParent(line);
                 runtime.EndParent(cell);
             }
             runtime.EndParent(row);
         }
         if (columns.Count > 0) { Row(columns, head: true); Separator.Build(runtime); }
+        // height: the rows scroll under the head, which stays.
+        Box? body = null;
+        if (Px(n.Props.GetValueOrDefault("height")) is { } bodyHeight)
+        {
+            body = runtime.BoxFromId($"bib-tbody-{n.Key ?? n.Text("id") ?? _ids++.ToString()}",
+                InteractionKinds.ViewScrollY | InteractionKinds.ClampY | InteractionKinds.Clip);
+            body.Sized(Size.Fill, Size.Px(bodyHeight));
+            body.ChildLayoutAxis = LayoutAxis.Y;
+            body.AllowOverflowY = true;
+            runtime.BeginParent(body);
+        }
         for (int r = 0; r < rows.Count; r++)
         {
             if (r > 0) Separator.Build(runtime);
             Row(rows[r] as List<object?> ?? [rows[r]], head: false);
+        }
+        if (body is not null)
+        {
+            runtime.EndParent(body);
+            runtime.InteractionsFor(body);   // asking is what moves its view by the wheel, before the page asks
+        }
+        if (pages > 1)
+        {
+            // The pages: back, where it is, on.
+            Separator.Build(runtime);
+            var pager = runtime.BeginParent(runtime.Row().Sized(Size.Fill, Size.Fit));
+            pager.Style.Padding = EdgeInsets.Symmetric(horizontal: 0f, vertical: 6f);
+            var back = runtime.Button($"bib-prev-{n.Key}", "‹ Back", ghost: true, disabled: page <= 1, size: Smaller);
+            runtime.Spacer(Size.Fill);
+            runtime.Text($"Page {page} of {pages} · {Number(n.Props.GetValueOrDefault("total"))} rows", Smaller, UiColor.TextSecondary);
+            runtime.Spacer(Size.Fill);
+            var next = runtime.Button($"bib-next-{n.Key}", "Next ›", ghost: true, disabled: page >= pages, size: Smaller);
+            runtime.EndParent(pager);
+            Claim(k, back.Node);
+            Claim(k, next.Node);
+            if (back.Clicked || next.Clicked)
+                Set(n, new Dictionary<string, object?>(st!) { ["page"] = (double)(page + (next.Clicked ? 1 : -1)) });
         }
         runtime.EndParent(table);
     }
@@ -1048,9 +1311,14 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         string value = Values.Str(n.Props.GetValueOrDefault("value") ?? "");
         if (!_fields.TryGetValue(key, out var field))
         {
-            field = (new BibuiStr(64), new TextEditState());
+            field = (new BibuiStr(64), new TextEditState(), value);
             field.Text.ReplaceRange((0, 0), value);
-            _fields[key] = field;
+        }
+        else if (value != field.Seen)
+        {
+            // The document set() it: the field shows the new text, its caret at the end.
+            field.Text.ReplaceRange((0, (int)field.Text.Length), value);
+            field.Edit = new TextEditState();
         }
         string id = "bib-" + key;
         _fieldIds.Add(id);
@@ -1060,36 +1328,116 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         frame.SizeY = SemanticSize.ChildrenSum();
         runtime.BeginParent(frame);
         // The field takes the keyboard with a press and gives it up on Enter or Escape.
-        runtime.TextField(id, field.Text, field.Edit, placeholder: n.Text("placeholder") ?? "");
+        var typed = runtime.TextField(id, field.Text, field.Edit, placeholder: n.Text("placeholder") ?? "");
+        // Enter in a field is the document's when it asked for enter (a button with key: "enter"): a form sends on Enter.
+        bool submitted = typed.Interaction.Submitted && _frame?.Keys.Contains("enter") == true;
         runtime.EndParent(frame);
         Claim(k, frame);
         string now = field.Text.ToString();
+        _fields[key] = field with { Seen = now };
         if (now != value) Set(n, now);
+        if (submitted) Fire(-1, new DocEvent("key", "enter"), what: "key");
     }
 
     // ── what a reader does ───────────────────────────────────────────────────
+
+    // A box with an id: what the pointer did to it is an event of the document's, its hover style
+    // and its tip are drawn, and a press on it is the box's, not the block's.
+    private void Pointer(FrameNode n, int k, Box box)
+    {
+        string id = n.Key!;
+        _idBoxes.Add((id, box));
+        Claim(k, box);
+        if (n.Props.GetValueOrDefault("hover") is Dictionary<string, object?> hover)
+        {
+            if (hover.GetValueOrDefault("background") is { } hb) box.Style.HoverBackgroundColor = Colour(hb, UiColor.SurfaceRaised);
+            if (hover.GetValueOrDefault("borderColor") is { } hc) box.Style.HoverBorderColor = Colour(hc, UiColor.BorderHover);
+        }
+        var ia = runtime.InteractionsFor(box);
+        if (ia.Hovering || ia.Dragging || ia.Released) (_pointer, _pointerSeen) = ((ia.X, ia.Y), true);
+        if (ia.Hovering && n.Text("tip") is { Length: > 0 } tip) Tooltip.Build(runtime, tip, box);
+        double x = ia.X - box.Rect.X, y = ia.Y - box.Rect.Y;
+        // The boxes with an id around this one hear its events too, innermost first, each in its own terms.
+        var around = _around.AsEnumerable().Reverse().Select(a => (a.Id, (double)(box.Rect.X - a.Box.Rect.X), (double)(box.Rect.Y - a.Box.Rect.Y))).ToList();
+        DocEvent Ev(string kind, double dx = 0, double dy = 0) => new(kind, id, x, y, dx, dy) { Around = around };
+        // Quiet: a box promises nothing, so one that does nothing with a press says nothing.
+        if (ia.Pressed) Fire(k, Ev("press"), quiet: true);
+        else if (ia.Dragging && (ia.DragDeltaX != 0f || ia.DragDeltaY != 0f)) Fire(k, Ev("drag", ia.DragDeltaX, ia.DragDeltaY), quiet: true);
+        if (ia.Released) Fire(k, Ev("release", ia.DragDeltaX, ia.DragDeltaY), quiet: true);
+        if (ia.Clicked) Fire(k, Ev("click"), quiet: true);
+        if (ia.RightPressed) Fire(k, Ev("rclick"), quiet: true);
+        if (ia.Dragging) runtime.RequestFrame();
+    }
 
     private void Set(FrameNode n, object? value)
     {
         if (_program.Session is null || n.Key is null) return;
         _program.Session.Set(n.Key, value);
-        _program.Touch();
+        if (_program.UsesChanged) Fire(-1, new DocEvent("change", n.Key), quiet: true);
         runtime.RequestFrame();
+        _program.Touch();
     }
 
     // The click's run: what the document would do. A viewer does none of it.
-    private void Click(int k, string key)
+    private void Click(int k, string key) => Fire(k, DocEvent.Click(key));
+
+    // An event's run. A quiet one (a drag's moves, an input's change) says only what it would do or how it failed,
+    // not that it did nothing: most of them do.
+    private void Fire(int k, DocEvent ev, bool quiet = false, string what = "click")
     {
         if (_program.Session is null) return;
-        var result = _program.Session.Click(key);
-        _program.Notices[k] = result.Errors.FirstOrDefault(e => e is not null) is { } e
-            ? "That click fails: " + e.Message
-            : result.Effects.Count == 0
-                ? "That click does nothing here."
-                : "Would " + string.Join("; then ", result.Effects.Select(x => x.Describe()))
-                  + ". This viewer does not run effects.";
+        var result = _program.Session.Fire(ev);
+        _program.Touch();   // the states it set()
+        if (quiet && result.Effects.Count == 0 && result.Errors.All(e => e is null)) { runtime.RequestFrame(); return; }
+        Told(k, result, ev.Kind == "change" ? "change" : what);
+    }
+
+    // What an event's run would do, or why it failed, under the block it came from (k < 0: the block that failed, else the first).
+    /// <summary>
+    /// Saves a document's download() and says where it went; null saves it in the Downloads folder
+    /// (the browser's download, in the web viewer).
+    /// </summary>
+    public static Func<string, string, string>? Saver;
+
+    private static string SaveInDownloads(string name, string text)
+    {
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string dir = Environment.GetEnvironmentVariable("XDG_DOWNLOAD_DIR") is { Length: > 0 } x ? x : Path.Combine(home, "Downloads");
+        Directory.CreateDirectory(dir);
+        string path = Path.Combine(dir, name);
+        // Never over a file already there: plan.csv, plan (2).csv, …
+        for (int n = 2; File.Exists(path); n++)
+            path = Path.Combine(dir, $"{Path.GetFileNameWithoutExtension(name)} ({n}){Path.GetExtension(name)}");
+        File.WriteAllText(path, text);
+        return "Saved " + (path.StartsWith(home + "/") ? "~" + path[home.Length..] : path) + ".";
+    }
+
+    private void Told(int k, FrameResult result, string what)
+    {
+        if (k < 0) k = result.Errors.Select((e, i) => (e, i)).FirstOrDefault(x => x.e is not null).i;
+        // copy() and download() are the reader's own, and bibmd does them; the rest it only says.
+        var done = new List<string>();
+        if (result.Errors.All(e => e is null))
+            foreach (var fx in result.Effects.Where(x => x.Kind is "copy" or "download"))
+            {
+                if (fx.Kind == "copy") { runtime.ClipboardSet(Values.Str(fx.Payload)); done.Add("Copied."); }
+                else
+                {
+                    try { done.Add((Saver ?? SaveInDownloads)(fx.Tool ?? "download.txt", Values.Str(fx.Payload))); }
+                    catch (Exception x) when (x is IOException or UnauthorizedAccessException) { done.Add($"Could not save {fx.Tool}: {x.Message}"); }
+                }
+            }
+        result.Effects.RemoveAll(x => x.Kind is "copy" or "download");
+        string? notice = result.Errors.FirstOrDefault(e => e is not null) is { } e
+            ? $"That {what} fails: " + e.Message
+            : result.Effects.Count > 0
+                ? "Would " + string.Join("; then ", result.Effects.Select(x => x.Describe()))
+                  + ". This viewer does not run effects."
+                : result.Sets.Count == 0 ? $"That {what} does nothing here." : null;   // a click that set() changed the page: it says so itself
+        if (done.Count > 0) notice = string.Join(" ", done.Append(notice ?? "").Where(t => t.Length > 0 && !t.EndsWith("does nothing here.")));
+        if (notice is null) _program.Notices.Remove(k);
+        else _program.Notices[k] = notice;
         runtime.RequestFrame();
-        _program.Touch();
     }
 }
 
@@ -1104,13 +1452,21 @@ public sealed class BibProgram
 {
     private string _key = "";
     private FrameResult? _frame;
-    private bool _rerun = true;   // a value was set since _frame was run (the program has no clock: nothing else changes it)
+    private bool _rerun = true;   // a value was set since _frame was run, or the pointer moved onto another box with an id
+    private DateTimeOffset _ran;  // when _frame was run: a document that reads the clock runs again every _frame.Every seconds
+    private readonly Dictionary<object, HashSet<string>> _hovered = [];   // each place's boxes under the pointer
 
     public DocSession? Session { get; private set; }
     public string? DataError { get; private set; }
 
     /// <summary>Bib block -> what its last click would have done.</summary>
     public Dictionary<int, string> Notices { get; } = [];
+
+    /// <summary>The alarms rung, by their time: each rings once, whichever place draws it.</summary>
+    internal HashSet<double> Rang { get; } = [];
+
+    /// <summary>The program calls changed(): an input's change is an event.</summary>
+    internal bool UsesChanged { get; private set; }
 
     /// <summary>A reader changed a value or clicked, in any of the places that draw the program.</summary>
     public event Action? Changed;
@@ -1126,7 +1482,7 @@ public sealed class BibProgram
     /// data changed gets a new session, keeping the values the reader gave. Null with no bib blocks.
     /// Run again only when what it reads changed: a frame that scrolls the page draws the last run.
     /// </summary>
-    internal FrameResult? Frame(string? front, List<string> dataBlocks, List<string> sources)
+    internal FrameResult? Frame(string? front, List<string> dataBlocks, List<string> sources, object place, HashSet<string> hovered)
     {
         if (sources.Count == 0) { Session = null; _frame = null; return null; }
         string key = (front ?? "") + "\u0001" + string.Join("\u0002", dataBlocks) + "\u0001" + string.Join("\u0002", sources);
@@ -1138,10 +1494,21 @@ public sealed class BibProgram
             Session = next;
             DataError = error;
             _key = key;
+            UsesChanged = sources.Any(src => src.Contains("changed(", StringComparison.Ordinal));
             Notices.Clear();
             _rerun = true;
         }
-        if (_rerun || _frame is null) (_frame, _rerun) = (Session.Frame(), false);
+        // The boxes under the pointer, in any place that draws the program; and the clock, when it reads it.
+        _hovered[place] = hovered;
+        var all = _hovered.Values.SelectMany(h => h).ToHashSet();
+        if (!all.SetEquals(Session.Host.Hovered)) { Session.Host.Hovered = all; _rerun = true; }
+        var now = DateTimeOffset.Now;
+        if (_frame?.Every is { } every && (now - _ran).TotalSeconds >= every * 0.98) _rerun = true;
+        if (_rerun || _frame is null)
+        {
+            Session.Host.Now = now;
+            (_frame, _rerun, _ran) = (Session.Frame(), false, now);
+        }
         return _frame;
     }
 }

@@ -66,7 +66,14 @@ public static class Check
         var frame = session.Frame();
         for (int k = 0; k < sources.Count; k++)
             if (frame.Errors[k] is { } e) Error(At(k, e.Message));
-        foreach (var w in frame.Warnings.Distinct()) Warn(w);
+        foreach (var w in frame.Warnings.Distinct())
+        {
+            // "block 2, line 3:5: …" from the interpreter is "… at line 14:5 (block 2, from line 12)", as errors are.
+            var m = System.Text.RegularExpressions.Regex.Match(w, @"^block (\d+), line (\d+):(\d+): (.*)$", System.Text.RegularExpressions.RegexOptions.Singleline);
+            int k = m.Success ? int.Parse(m.Groups[1].Value) - 1 : -1;
+            if (k >= 0 && k < sources.Count) Warn(At(k, $"{m.Groups[4].Value} at line {m.Groups[2].Value}:{m.Groups[3].Value}"));
+            else Warn(w);
+        }
         // Inputs moved can cost more than their defaults: a run close to the budget is a warning.
         if (frame.Steps > Budget.Limit * 0.8)
             Warn($"the first run takes {Count(frame.Steps)} of {Count(Budget.Limit)} steps; moving an input may run out (precompute in data:, or sample fewer points)");
@@ -97,9 +104,48 @@ public static class Check
             var did = click.Effects.Select(x => x.Describe())
                 .Concat(click.Sets.Select(s => $"set {s.Key}")).ToList();
             output.Add($"{name}: button “{label}”: " + (did.Count == 0 ? "does nothing" : string.Join("; then ", did)));
-            foreach (var x in click.Effects.Where(x => !allowed.Contains(x.Kind) && !(x.Tool is { } t && allowed.Contains(t))))
+            foreach (var x in click.Effects.Where(x => x.Kind is not ("copy" or "download") && !allowed.Contains(x.Kind) && !(x.Tool is { } t && allowed.Contains(t))))
                 Warn($"button “{label}” would {x.Kind}{(x.Tool is null ? "" : " " + x.Tool)}, which the front matter's effects: does not list, so a host refuses it");
         }
+
+        // Each tab that does not show at first, shown: only the tab on show runs, so its errors would wait for a reader.
+        foreach (var (tabs, k) in nodes.Where(x => x.n.Type == "tabs" && x.n.Key is not null))
+            foreach (var tab in tabs.Children.Where(c => c.Type == "tab" && c.Props.GetValueOrDefault("active") is false))
+            {
+                string title = tab.Text("title") ?? "";
+                var shown = new DocSession(sources, data);
+                shown.Set(tabs.Key!, title);
+                var f = shown.Frame();
+                for (int j = 0; j < sources.Count; j++)
+                    if (f.Errors[j] is { } e && frame.Errors[j] is null) Error($"in the tab “{title}”: " + At(j, e.Message));
+                if (f.Steps > Budget.Limit * 0.8) Warn($"in the tab “{title}”, a run takes {Count(f.Steps)} of {Count(Budget.Limit)} steps");
+            }
+
+        // The other events: each key it asks for (those of no button), a click, a right click and a press on each
+        // box with an id (300 at most), each alarm, and a change of each input when it reads changed(). Each runs
+        // from the first frame; a failure is an error, and what each kind sets is said once.
+        var buttonKeys = nodes.Where(x => x.n.Type == "button").Select(x => x.n.Text("key")).OfType<string>().ToHashSet();
+        var events = frame.Keys.Where(key => !buttonKeys.Contains(key)).Select(key => (Say: $"key “{key}”", Ev: new DocEvent("key", key)))
+            .Concat(nodes.Where(x => x.n.Type == "box" && x.n.Key is not null).Take(300)
+                .SelectMany(x => new[] { "click", "rclick", "press" }.Select(kind => (Say: $"{kind} on a box", Ev: new DocEvent(kind, x.n.Key!, 1, 1)))))
+            .Concat(frame.Alarms.Distinct().Select(at => (Say: "an alarm", Ev: new DocEvent("alarm", DocEvent.AlarmName(at)))))
+            .Concat(sources.Any(src => src.Contains("changed(")) ? nodes.Where(x => Interpreter.Inputs.Contains(x.n.Type) && x.n.Key is not null)
+                .Select(x => (Say: $"a change of “{x.n.Text("label")}”", Ev: new DocEvent("change", x.n.Key!))) : []);
+        var said = new Dictionary<string, HashSet<string>>();
+        foreach (var (say, ev) in events)
+        {
+            var run = new DocSession(sources, data).Fire(ev);
+            bool failed = false;
+            for (int j = 0; j < sources.Count; j++)
+                if (run.Errors[j] is { } e && frame.Errors[j] is null) { Error($"{say}: " + At(j, e.Message)); failed = true; }
+            if (failed) break;   // one is enough: the others likely fail alike
+            string kind = ev.Kind == "change" ? "a change" : say;   // a key is said by its name; a click on any box as one
+            var did = said.TryGetValue(kind, out var d) ? d : said[kind] = [];
+            foreach (var x in run.Effects) did.Add(x.Describe());
+            foreach (var key in run.Sets.Keys) did.Add($"set {key}");
+        }
+        foreach (var (kind, did) in said.Where(x => x.Value.Count > 0))
+            output.Add($"{name}: {kind}: " + string.Join("; ", did.Take(8)) + (did.Count > 8 ? $"; and {did.Count - 8} more" : ""));
 
         output.Add(errors == 0
             ? $"{name}: ok, {sources.Count} bib block(s), {Count(frame.Steps)} steps, {Count(frame.Size)} values{(warnings > 0 ? $", {warnings} warning(s)" : "")}"

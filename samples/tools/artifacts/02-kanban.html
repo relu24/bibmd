@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kanban: Lumen Notes</title>
+<style>
+  :root {
+    --bg: #f2f3f6; --col: #e8eaef; --card: #ffffff; --ink: #191c22; --muted: #646b78; --faint: #a0a6b2; --rule: #d9dce3;
+    --accent: #5b5bd6; --danger: #d6433b; --warn: #d98a00; --ok: #2b9a66;
+    --bug: #d6433b; --feature: #5b5bd6; --chore: #7a808c; --research: #0f8f9c;
+    --shadow: 0 1px 2px rgba(25,28,34,.08), 0 6px 16px -10px rgba(25,28,34,.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101217; --col: #171a21; --card: #1f232c; --ink: #e9ecf2; --muted: #9aa1ae; --faint: #5f6675; --rule: #2b303b;
+      --accent: #8b8bff; --danger: #ff6b62; --warn: #ffb53d; --ok: #4fd39a;
+      --bug: #ff6b62; --feature: #8b8bff; --chore: #9aa1ae; --research: #3fd0de;
+      --shadow: 0 1px 2px rgba(0,0,0,.5), 0 6px 16px -10px rgba(0,0,0,.9);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); color: var(--ink); }
+  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1240px; margin: 0 auto; padding: 32px 20px 60px; }
+  header { display: flex; justify-content: space-between; align-items: end; gap: 12px; flex-wrap: wrap; }
+  h1 { font: 800 28px/1.1 "Avenir Next", "Helvetica Neue", system-ui, sans-serif; margin: 0; letter-spacing: -.02em; }
+  .sub { color: var(--muted); font-size: 14px; }
+  .btn { font: 600 14px system-ui, sans-serif; padding: 8px 14px; border-radius: 9px; border: 1px solid var(--rule); background: var(--card); color: var(--ink); cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.danger { color: var(--danger); }
+  .bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 18px 0; }
+  .search { flex: 1 1 220px; padding: 8px 12px; border-radius: 9px; border: 1px solid var(--rule); background: var(--card); color: var(--ink); font: inherit; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { font: 600 12px system-ui, sans-serif; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--rule); background: var(--card); color: var(--muted); cursor: pointer; user-select: none; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .sep { width: 1px; height: 22px; background: var(--rule); }
+  .board { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 14px; overflow-x: auto; }
+  .column { background: var(--col); border-radius: 14px; padding: 10px; min-height: 380px; display: flex; flex-direction: column; gap: 8px; border: 2px solid transparent; transition: border-color .15s, background .15s; }
+  .column.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--col)); }
+  .column.wip { border-color: color-mix(in srgb, var(--danger) 55%, transparent); }
+  .colhead { display: flex; align-items: center; gap: 8px; padding: 4px 4px 6px; }
+  .colhead b { font-size: 14px; }
+  .count { font: 600 12px ui-monospace, monospace; color: var(--muted); background: var(--card); border-radius: 999px; padding: 1px 8px; }
+  .wip .count { background: var(--danger); color: #fff; }
+  .warn { font-size: 12px; color: var(--danger); margin-left: auto; font-weight: 600; }
+  .limit { font-size: 12px; color: var(--faint); margin-left: auto; }
+  .card { background: var(--card); border-radius: 10px; padding: 10px 12px; box-shadow: var(--shadow); cursor: grab; border-left: 4px solid var(--pc); position: relative; transition: transform .15s, opacity .15s; }
+  .card:hover { transform: translateY(-1px); }
+  .card:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .card.dragging { opacity: .35; }
+  .card .title { font-weight: 600; outline: none; border-radius: 4px; }
+  .card .title[contenteditable="true"] { background: color-mix(in srgb, var(--accent) 10%, transparent); padding: 0 3px; cursor: text; }
+  .card .meta { display: flex; gap: 6px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .tag { font: 600 11px system-ui; padding: 2px 8px; border-radius: 999px; color: var(--tc); background: color-mix(in srgb, var(--tc) 14%, transparent); }
+  .prio { margin-left: auto; font: 600 11px ui-monospace, monospace; }
+  .card .tools { position: absolute; top: 6px; right: 6px; display: none; gap: 2px; }
+  .card:hover .tools, .card:focus-within .tools { display: flex; }
+  .card .tools button { border: 0; background: var(--col); color: var(--muted); border-radius: 6px; width: 24px; height: 24px; cursor: pointer; font-size: 13px; }
+  .ghost { height: 4px; border-radius: 2px; background: var(--accent); margin: -2px 0; }
+  .empty { color: var(--faint); font-size: 13px; text-align: center; padding: 20px 0; border: 1px dashed var(--rule); border-radius: 10px; }
+  dialog { border: 1px solid var(--rule); border-radius: 16px; background: var(--card); color: var(--ink); padding: 22px; width: min(440px, 92vw); box-shadow: var(--shadow); }
+  dialog::backdrop { background: rgba(10,12,16,.45); }
+  dialog h2 { margin: 0 0 14px; font-size: 18px; }
+  form .f { display: grid; gap: 4px; margin-bottom: 12px; }
+  form label { font-size: 13px; color: var(--muted); }
+  form input, form select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+  .actions .left { margin-right: auto; }
+  .hint { color: var(--faint); font-size: 12px; margin-top: 14px; }
+  kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Lumen Notes · Sprint 14</h1>
+      <div class="sub" id="summary"></div>
+    </div>
+    <button class="btn primary" id="add">+ New card</button>
+  </header>
+
+  <div class="bar">
+    <input class="search" id="q" type="search" placeholder="Search cards…  ( / )">
+    <div class="chips" id="tags"></div>
+    <div class="sep"></div>
+    <div class="chips" id="owners"></div>
+  </div>
+
+  <div class="board" id="board"></div>
+  <div class="hint">Drag cards between columns. Click a title to rename it, double-click a card to edit it. With a card focused: <kbd>←</kbd><kbd>→</kbd> move it, <kbd>Del</kbd> delete, <kbd>Enter</kbd> edit.</div>
+</main>
+
+<dialog id="dlg">
+  <form id="form" method="dialog">
+    <h2 id="dlgTitle">New card</h2>
+    <div class="f"><label for="fTitle">Title</label><input id="fTitle" required maxlength="80"></div>
+    <div class="two">
+      <div class="f"><label for="fOwner">Owner</label><select id="fOwner"></select></div>
+      <div class="f"><label for="fTag">Tag</label><select id="fTag"></select></div>
+    </div>
+    <div class="two">
+      <div class="f"><label for="fPrio">Priority</label><select id="fPrio"></select></div>
+      <div class="f"><label for="fCol">Column</label><select id="fCol"></select></div>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn danger left" id="fDel">Delete</button>
+      <button type="button" class="btn" id="fCancel">Cancel</button>
+      <button type="submit" class="btn primary" id="fSave">Add</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const COLUMNS = [
+  { id: "todo",   name: "To do",  limit: null },
+  { id: "doing",  name: "Doing",  limit: 3 },
+  { id: "review", name: "Review", limit: 2 },
+  { id: "done",   name: "Done",   limit: null },
+];
+const OWNERS = ["Designer", "Frontend", "Backend", "PM", "QA"];
+const TAGS = ["feature", "bug", "chore", "research"];
+const PRIOS = [
+  { id: "P1", color: "--danger" }, { id: "P2", color: "--warn" }, { id: "P3", color: "--faint" },
+];
+const $ = id => document.getElementById(id);
+
+let nextId = 1;
+const mk = (col, title, owner, tag, prio) => ({ id: nextId++, col, title, owner, tag, prio });
+let cards = [
+  mk("todo", "Offline sync for shared notebooks", "Backend", "feature", "P1"),
+  mk("todo", "Empty state for the search page", "Designer", "feature", "P3"),
+  mk("todo", "Interview five teachers about tagging", "PM", "research", "P2"),
+  mk("todo", "Upgrade the build toolchain", "Frontend", "chore", "P3"),
+  mk("doing", "Note list jumps when a note is pinned", "Frontend", "bug", "P1"),
+  mk("doing", "Rate-limit the share-link endpoint", "Backend", "feature", "P2"),
+  mk("doing", "Onboarding checklist copy", "PM", "chore", "P3"),
+  mk("review", "Dark mode for the editor toolbar", "Designer", "feature", "P2"),
+  mk("review", "Export to Markdown loses checkboxes", "Backend", "bug", "P1"),
+  mk("review", "Regression suite for attachments", "QA", "chore", "P2"),
+  mk("done", "Keyboard shortcut sheet", "Frontend", "feature", "P3"),
+  mk("done", "Crash on empty notebook title", "QA", "bug", "P1"),
+];
+
+const filter = { q: "", tags: new Set(), owners: new Set() };
+let editing = null;     // the card the dialog edits, or null when it adds
+let dragId = null;
+
+function visible(c) {
+  if (filter.tags.size && !filter.tags.has(c.tag)) return false;
+  if (filter.owners.size && !filter.owners.has(c.owner)) return false;
+  const q = filter.q.trim().toLowerCase();
+  return !q || (c.title + " " + c.owner + " " + c.tag).toLowerCase().includes(q);
+}
+
+function render(focusId) {
+  const board = $("board"); board.innerHTML = "";
+  for (const col of COLUMNS) {
+    const all = cards.filter(c => c.col === col.id);
+    const shown = all.filter(visible);
+    const over = col.limit != null && all.length > col.limit;
+    const el = document.createElement("section");
+    el.className = "column" + (over ? " wip" : "");
+    el.dataset.col = col.id;
+    el.innerHTML = `<div class="colhead"><b>${col.name}</b><span class="count">${shown.length === all.length ? all.length : shown.length + "/" + all.length}</span>` +
+      (over ? `<span class="warn">Over WIP limit (${col.limit})</span>` : col.limit != null ? `<span class="limit">limit ${col.limit}</span>` : "") + `</div>`;
+    for (const c of shown) el.appendChild(cardEl(c));
+    if (!shown.length) el.insertAdjacentHTML("beforeend", `<div class="empty">${all.length ? "No cards match" : "Drop cards here"}</div>`);
+    wireDrop(el, col.id);
+    board.appendChild(el);
+  }
+  const shownN = cards.filter(visible).length;
+  const overCols = COLUMNS.filter(c => c.limit != null && cards.filter(x => x.col === c.id).length > c.limit);
+  $("summary").textContent = `${cards.length} cards · ${cards.filter(c => c.col === "done").length} done` +
+    (shownN !== cards.length ? ` · ${shownN} shown` : "") + (overCols.length ? ` · ${overCols.map(c => c.name).join(", ")} over limit` : "");
+  if (focusId != null) document.querySelector(`.card[data-id="${focusId}"]`)?.focus();
+}
+
+function cardEl(c) {
+  const el = document.createElement("article");
+  el.className = "card"; el.tabIndex = 0; el.draggable = true; el.dataset.id = c.id;
+  const p = PRIOS.find(p => p.id === c.prio);
+  el.style.setProperty("--pc", `var(${p.color})`);
+  el.innerHTML = `<div class="title"></div>
+    <div class="meta"><span class="tag" style="--tc:var(--${c.tag})">${c.tag}</span><span>${c.owner}</span><span class="prio" style="color:var(${p.color})">${c.prio}</span></div>
+    <div class="tools"><button title="Edit" data-act="edit">✎</button><button title="Delete" data-act="del">✕</button></div>`;
+  const title = el.querySelector(".title");
+  title.textContent = c.title;
+  // Inline rename: a click on the title makes it editable; Enter or leaving saves, Escape cancels.
+  title.addEventListener("click", e => {
+    if (title.isContentEditable) return;
+    e.stopPropagation();
+    title.contentEditable = "true"; el.draggable = false; title.focus();
+    document.getSelection().selectAllChildren(title);
+  });
+  title.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); title.blur(); }
+    if (e.key === "Escape") { title.textContent = c.title; title.blur(); }
+    e.stopPropagation();
+  });
+  title.addEventListener("blur", () => {
+    title.contentEditable = "false"; el.draggable = true;
+    const t = title.textContent.trim();
+    if (t && t !== c.title) { c.title = t; render(c.id); } else title.textContent = c.title;
+  });
+  el.querySelector('[data-act="edit"]').addEventListener("click", e => { e.stopPropagation(); openDialog(c); });
+  el.querySelector('[data-act="del"]').addEventListener("click", e => { e.stopPropagation(); remove(c); });
+  el.addEventListener("dblclick", () => openDialog(c));
+  el.addEventListener("keydown", e => {
+    const i = COLUMNS.findIndex(x => x.id === c.col);
+    if (e.key === "ArrowRight" && i < COLUMNS.length - 1) { c.col = COLUMNS[i + 1].id; render(c.id); }
+    else if (e.key === "ArrowLeft" && i > 0) { c.col = COLUMNS[i - 1].id; render(c.id); }
+    else if (e.key === "Delete" || e.key === "Backspace") remove(c);
+    else if (e.key === "Enter") openDialog(c);
+  });
+  el.addEventListener("dragstart", e => {
+    dragId = c.id; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(c.id));
+    requestAnimationFrame(() => el.classList.add("dragging"));
+  });
+  el.addEventListener("dragend", () => { dragId = null; el.classList.remove("dragging"); document.querySelectorAll(".ghost").forEach(g => g.remove()); });
+  return el;
+}
+
+// Where in a column the dragged card would land: before the first card whose middle is below the pointer.
+function dropIndex(colEl, y) {
+  const els = [...colEl.querySelectorAll(".card:not(.dragging)")];
+  const i = els.findIndex(el => { const r = el.getBoundingClientRect(); return y < r.top + r.height / 2; });
+  return { els, i: i < 0 ? els.length : i };
+}
+
+function wireDrop(colEl, colId) {
+  colEl.addEventListener("dragover", e => {
+    if (dragId == null) return;
+    e.preventDefault(); colEl.classList.add("over");
+    document.querySelectorAll(".ghost").forEach(g => g.remove());
+    const { els, i } = dropIndex(colEl, e.clientY);
+    const ghost = document.createElement("div"); ghost.className = "ghost";
+    if (i < els.length) colEl.insertBefore(ghost, els[i]); else colEl.appendChild(ghost);
+  });
+  colEl.addEventListener("dragleave", e => { if (!colEl.contains(e.relatedTarget)) { colEl.classList.remove("over"); colEl.querySelector(".ghost")?.remove(); } });
+  colEl.addEventListener("drop", e => {
+    e.preventDefault(); colEl.classList.remove("over");
+    const card = cards.find(c => c.id === dragId); if (!card) return;
+    const { els, i } = dropIndex(colEl, e.clientY);
+    const beforeId = i < els.length ? +els[i].dataset.id : null;
+    cards = cards.filter(c => c !== card);
+    card.col = colId;
+    const at = beforeId == null ? -1 : cards.findIndex(c => c.id === beforeId);
+    if (at < 0) {
+      const lastInCol = cards.map(c => c.col).lastIndexOf(colId);
+      cards.splice(lastInCol + 1 || cards.length, 0, card);
+    } else cards.splice(at, 0, card);
+    render(card.id);
+  });
+}
+
+function remove(c) {
+  cards = cards.filter(x => x !== c); render();
+}
+
+function fillSelect(sel, items) { sel.innerHTML = items.map(([v, t]) => `<option value="${v}">${t}</option>`).join(""); }
+fillSelect($("fOwner"), OWNERS.map(o => [o, o]));
+fillSelect($("fTag"), TAGS.map(t => [t, t]));
+fillSelect($("fPrio"), PRIOS.map(p => [p.id, p.id]));
+fillSelect($("fCol"), COLUMNS.map(c => [c.id, c.name]));
+
+function openDialog(c) {
+  editing = c || null;
+  $("dlgTitle").textContent = c ? "Edit card" : "New card";
+  $("fSave").textContent = c ? "Save" : "Add";
+  $("fDel").style.display = c ? "" : "none";
+  $("fTitle").value = c ? c.title : "";
+  $("fOwner").value = c ? c.owner : OWNERS[0];
+  $("fTag").value = c ? c.tag : TAGS[0];
+  $("fPrio").value = c ? c.prio : "P2";
+  $("fCol").value = c ? c.col : "todo";
+  $("dlg").showModal(); $("fTitle").focus();
+}
+
+$("form").addEventListener("submit", e => {
+  e.preventDefault();
+  const v = { title: $("fTitle").value.trim(), owner: $("fOwner").value, tag: $("fTag").value, prio: $("fPrio").value, col: $("fCol").value };
+  if (!v.title) return;
+  let id;
+  if (editing) { Object.assign(editing, v); id = editing.id; }
+  else { const c = mk(v.col, v.title, v.owner, v.tag, v.prio); cards.push(c); id = c.id; }
+  $("dlg").close(); render(id);
+});
+$("fCancel").addEventListener("click", () => $("dlg").close());
+$("fDel").addEventListener("click", () => { $("dlg").close(); if (editing) remove(editing); });
+$("add").addEventListener("click", () => openDialog(null));
+
+function chipRow(el, items, set) {
+  el.innerHTML = "";
+  for (const it of items) {
+    const b = document.createElement("span"); b.className = "chip"; b.textContent = it;
+    b.addEventListener("click", () => { set.has(it) ? set.delete(it) : set.add(it); b.classList.toggle("on"); render(); });
+    el.appendChild(b);
+  }
+}
+chipRow($("tags"), TAGS, filter.tags);
+chipRow($("owners"), OWNERS, filter.owners);
+$("q").addEventListener("input", e => { filter.q = e.target.value; render(); });
+document.addEventListener("keydown", e => {
+  if (e.key === "/" && document.activeElement.tagName !== "INPUT" && !document.activeElement.isContentEditable) { e.preventDefault(); $("q").focus(); }
+  if (e.key === "n" && document.activeElement === document.body) openDialog(null);
+});
+
+render();
+</script>
+</body>
+</html>

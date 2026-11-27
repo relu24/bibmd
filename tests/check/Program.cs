@@ -1,0 +1,40 @@
+// md --check on documents written here: what it says, and at which line of the file.
+using BibMd;
+
+int failed = 0, passed = 0;
+void Expect(string name, bool ok, IEnumerable<string> lines)
+{
+    if (ok) { passed++; return; }
+    failed++;
+    Console.WriteLine($"FAIL {name}:\n  " + string.Join("\n  ", lines));
+}
+
+const string Fence = "```";
+string Doc(params string[] blocks) =>
+    "---\nbib: 1\n---\n# A document\n\n" + string.Join("\n\n", blocks.Select(b => $"{Fence}bib\n{b}\n{Fence}"));
+
+{
+    // Block 2 opens at line 11 of the file: its line 2 is line 13.
+    var (lines, errors) = Check.Report(Doc("text(\"one\")\ntext(\"two\")", "let c = 1\n  - 1\ntext(\"{c}\")"), "minus.bib.md");
+    Expect("a line that starts with - is a warning at its line in the file",
+        errors == 0 && lines.Any(l => l.StartsWith("minus.bib.md: warning: a line that starts with -") && l.Contains(" at line 13:3 (block 2, from line 11)")),
+        lines);
+}
+{
+    var (lines, errors) = Check.Report(Doc("text(\"a\")", "text(nope)"), "error.bib.md");
+    Expect("an error is at its line in the file", errors == 1 && lines.Any(l => l.Contains("error:") && l.Contains(" at line 11:1 (block 2, from line 10)")), lines);
+}
+{
+    var (lines, _) = Check.Report(Doc("slider(\"w(AA)\", 0, 2)\nslider(\"w(aa)\", 0, 2)"), "same.bib.md");
+    Expect("a warning with no line is said as it is", lines.Any(l => l.StartsWith("same.bib.md: warning: slider: 'w(aa)' is the same input")), lines);
+}
+
+{
+    // A click on a box with an id runs, and fails, though no button does.
+    var (lines, errors) = Check.Report(Doc("let c = box(id: \"cell\", width: 20, height: 20)\nif c.clicked { set(\"n\", nothing.at) }\nif key(\"k\").pressed { set(\"k\", 1) }"), "events.bib.md");
+    Expect("--check clicks a box with an id and presses the keys asked for",
+        errors == 1 && lines.Any(l => l.Contains("click on a box:") && l.Contains("error")) && lines.Any(l => l == "events.bib.md: key “k”: set k"), lines);
+}
+
+Console.WriteLine($"{passed} passed, {failed} failed");
+return failed == 0 ? 0 : 1;

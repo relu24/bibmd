@@ -164,6 +164,11 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         // The page, under the document's section strip when its front matter asks for one.
         var pane = runtime.BeginParent(runtime.Column().Sized(Size.Fill, Size.Fill));
         if (!_sourceView && !Bare) SectionStrip();
+        // A notch of the wheel goes three lines down the page, as in a browser; a touchpad goes as far as it moves.
+        runtime.WheelNotch = 3f * LineHeight();
+        // The page and, beside it, its bar: where on the page the view is, and a thumb to drag there.
+        bool bar = !Card && !OperatingSystem.IsIOS();
+        var scroller = runtime.BeginParent(runtime.Row().Sized(Size.Fill, Size.Fill));
         Box page = runtime.BoxFromId("page",
             InteractionKinds.ViewScrollY | InteractionKinds.ClampY | InteractionKinds.Clip | InteractionKinds.LeftPress);
         page.ChildLayoutAxis = LayoutAxis.Y;
@@ -239,6 +244,8 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         runtime.Box().Sized(Size.Fill, Size.Px(MathF.Max(160f, page.Extent.Y * 0.45f)));
         runtime.EndParent(content);
         runtime.EndParent(page);
+        if (bar) runtime.Scrollbar("page-bar", page);
+        runtime.EndParent(scroller);
         runtime.EndParent(pane);
         runtime.EndParent(main);
 
@@ -322,6 +329,12 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         }
     }
 
+    // The page's text is one selection: a drag goes on from block to block, and Ctrl+C copies all of it.
+    private const string SelectionGroup = "page";
+
+    // A heading drawn here, not by the Markdown view, still joins a selection dragged over it: whether it is in it.
+    private bool Picked(Box wrap, string text) => runtime.MarkdownSelectionText(SelectionGroup, wrap, text);
+
     private Box BlockView(int i, Block b, float column, out bool clicked)
     {
         Box wrap = runtime.BoxFromId("block-" + i, InteractionKinds.LeftPress | InteractionKinds.RightPress);
@@ -350,9 +363,9 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
         else if (b.Kind == BlockKind.FrontMatter) fold = FrontMatter(source);
         else if (b.Kind == BlockKind.Code && Bib.Pending(source) is { } pending) PendingView(pending.Intent, MathF.Min(width, MaxColumn - 2f * PadX));
         else if (b.Kind == BlockKind.Code && _bib.View(i, width)) live = true;
-        else if (b.Kind == BlockKind.Heading && Blocks.HeadingOf(source) is { Level: 1 or 6 } h) Heading(h.Level, h.Text, width);
+        else if (b.Kind == BlockKind.Heading && Blocks.HeadingOf(source) is { Level: 1 or 6 } h) Heading(h.Level, h.Text, width, Picked(wrap, h.Text));
         // A wide page reads as a page: its sections' headings without the rule under them.
-        else if (b.Kind == BlockKind.Heading && _width is not null && Blocks.HeadingOf(source) is { Level: 2 } h2) Heading(2, h2.Text, width);
+        else if (b.Kind == BlockKind.Heading && _width is not null && Blocks.HeadingOf(source) is { Level: 2 } h2) Heading(2, h2.Text, width, Picked(wrap, h2.Text));
         else if (b.Kind != BlockKind.Code || !Mermaid.View(runtime, source, width))
         {
             // Prose keeps the reading column's width on a wide page; tables take the whole.
@@ -360,7 +373,8 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
                 width = MathF.Min(width, MaxColumn - 2f * PadX);
             // A table is shown squared up — every row as many cells as the widest — as it will be
             // written once edited: a renderer drops a table whose rows disagree, or the cells past the header.
-            var md = runtime.Markdown("md-" + i, Parse(b.Kind == BlockKind.Table ? Tables.Align(source) : source), width, Sizes[_size]);
+            var md = runtime.Markdown("md-" + i, Parse(b.Kind == BlockKind.Table ? Tables.Align(source) : source), width, Sizes[_size],
+                selectionGroup: SelectionGroup);
             link = md.ClickedLink;
             task = md.ToggledTask;
             // The text takes a press itself, to select: a press let go where it went down is a click
@@ -405,18 +419,28 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
     }
 
     // A title in the display face, set large; and an eyebrow, a ###### line, as a small label
-    // in capitals above the heading after it.
-    private void Heading(int level, string text, float width)
+    // in capitals above the heading after it. Picked, its lines are highlighted as selected text is.
+    private void Heading(int level, string text, float width, bool picked)
     {
         if (level == 6)
         {
-            runtime.Text(text.ToUpperInvariant(), ComponentSize.Sm, UiColor.TextSecondary, FontSlot.Mono);
+            using (Highlight(picked)) runtime.Text(text.ToUpperInvariant(), ComponentSize.Sm, UiColor.TextSecondary, FontSlot.Mono);
             return;
         }
         float size = MathF.Round(runtime.FontInScope(Sizes[_size]).Size * (level == 1 ? 2.4f : 1.55f));
         var font = runtime.FontInScope(FontSize.Px(size), FontSlot.Display);
         foreach (var line in BibMd.Text.Lines(runtime, text, font, width))
-            runtime.Text(text.AsSpan(line.Start, line.End - line.Start), FontSize.Px(size), UiColor.TextPrimary, FontSlot.Display, FontWeight.Bold);
+            using (Highlight(picked))
+                runtime.Text(text.AsSpan(line.Start, line.End - line.Start), FontSize.Px(size), UiColor.TextPrimary, FontSlot.Display, FontWeight.Bold);
+    }
+
+    // A box as big as what is drawn in it, behind it the selection's colour; nothing when not picked.
+    private IDisposable? Highlight(bool picked)
+    {
+        if (!picked) return null;
+        Box box = runtime.Box().Sized(Size.Fit, Size.Fit);
+        box.Style.BackgroundColor = MarkdownExtensions.MarkdownSelectionHighlight;
+        return runtime.Parent(box);
     }
 
     // The front matter's nav: true (the ## headings as they read) or a list of labels (one per
@@ -984,6 +1008,8 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
                 continue;
             }
             if (!ev.IsKeyDown) continue;
+            // An open dropdown (a bib block's colour picker) closes on Escape: the key is its own.
+            if (ev.Key == Key.Escape && runtime.AnyDropDownOpen && !Editing) continue;
             // Done, right after typing in the same frame: the editor hasn't taken that text yet (it reads
             // this frame's text as it is built), so the block goes back at the start of the next frame.
             if (Editing && typed && (ev.Key == Key.Escape || ev.Key == Key.Enter && ev.Ctrl))
@@ -993,7 +1019,8 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
                 runtime.RequestFrame();
                 break;
             }
-            bool handled = GlobalKey(ev) || (Editing ? EditKey(ev) : _sidebar && _sideFocus && SideKey(ev) || ReadKey(ev));
+            // A key a bib block asked for is the document's, before the page's own (not before the window's).
+            bool handled = GlobalKey(ev) || (Editing ? EditKey(ev) : _sidebar && _sideFocus && SideKey(ev) || _bib.Key(ev) || ReadKey(ev));
             if (handled) { ev.Eat(); swallowText = ev.Ctrl; }
         }
     }

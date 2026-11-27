@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Elements: flashcards and quiz</title>
+<style>
+  :root {
+    --bg: #f5f4f0; --card: #ffffff; --ink: #1c1d21; --muted: #6a6e76; --border: #e2e1dc;
+    --accent: #3a6fd8; --good: #23935b; --bad: #d1453b; --warn: #c58a12;
+    --shadow: 0 2px 4px rgba(0,0,0,.05), 0 12px 32px rgba(0,0,0,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141518; --card: #1e2024; --ink: #e9e9ea; --muted: #9a9ea6; --border: #2e3137;
+      --accent: #6c9cf0; --good: #3cbf7d; --bad: #f06a5f; --warn: #e0a83a;
+      --shadow: 0 2px 4px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 32px 22px 60px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 24px; }
+  .modes { display: inline-flex; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+  .modes button { border: 0; background: none; color: var(--muted); font: inherit; font-weight: 600; padding: 7px 16px; border-radius: 8px; cursor: pointer; transition: background .2s, color .2s; }
+  .modes button.on { background: var(--accent); color: #fff; }
+  .pane { animation: fade .25s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } }
+  .hidden { display: none; }
+
+  /* Leitner boxes */
+  .boxes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 18px; }
+  .lbox { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; text-align: center; transition: border-color .2s, transform .2s; }
+  .lbox b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .lbox span { font-size: 11px; color: var(--muted); }
+  .lbox.due { border-color: var(--accent); }
+  .lbox.bump { transform: scale(1.08); }
+
+  .progress { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 0 0 18px; }
+  .progress i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s ease; }
+  .meta { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+
+  /* the card */
+  .stage { perspective: 1200px; }
+  .flash { position: relative; height: 290px; cursor: pointer; transform-style: preserve-3d; transition: transform .55s cubic-bezier(.3,.7,.2,1); }
+  .flash.flipped { transform: rotateY(180deg); }
+  .flash.out-left { animation: outL .22s ease forwards; }
+  .flash.in-right { animation: inR .22s ease; }
+  @keyframes outL { to { opacity: 0; transform: translateX(-40px); } }
+  @keyframes inR { from { opacity: 0; transform: translateX(40px); } }
+  .face { position: absolute; inset: 0; backface-visibility: hidden; background: var(--card); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; }
+  .back { transform: rotateY(180deg); }
+  .num { position: absolute; top: 16px; left: 20px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .cat { position: absolute; top: 16px; right: 20px; font-size: 12px; padding: 2px 10px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .sym { font-size: 96px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+  .name { font-size: 40px; font-weight: 700; }
+  .fact { color: var(--muted); max-width: 460px; margin-top: 12px; }
+  .tap { position: absolute; bottom: 14px; font-size: 12px; color: var(--muted); }
+
+  .controls { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .grp { display: flex; gap: 8px; }
+  button.b { border: 1px solid var(--border); background: var(--card); color: var(--ink); font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 10px; cursor: pointer; transition: transform .08s, background .2s; }
+  button.b:active { transform: scale(.97); }
+  button.b:disabled { opacity: .4; cursor: default; }
+  button.good { background: var(--good); border-color: var(--good); color: #fff; }
+  button.bad { background: var(--bad); border-color: var(--bad); color: #fff; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; margin-left: 6px; opacity: .8; }
+  .done { text-align: center; padding: 40px 20px; background: var(--card); border-radius: 18px; border: 1px solid var(--border); }
+  .keys { color: var(--muted); font-size: 12px; margin-top: 16px; text-align: center; }
+
+  /* quiz */
+  .q { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 26px; box-shadow: var(--shadow); }
+  .q h2 { margin: 0 0 4px; font-size: 14px; color: var(--muted); font-weight: 500; }
+  .q .prompt { font-size: 30px; font-weight: 700; margin-bottom: 18px; }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .opt { text-align: left; border: 1.5px solid var(--border); background: var(--bg); color: var(--ink); font: inherit; padding: 12px 14px; border-radius: 12px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .opt:hover:not(:disabled) { border-color: var(--accent); }
+  .opt:disabled { cursor: default; }
+  .opt.right { border-color: var(--good); background: color-mix(in srgb, var(--good) 16%, transparent); }
+  .opt.wrong { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 16%, transparent); animation: shake .35s; }
+  @keyframes shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+  .opt small { color: var(--muted); margin-right: 8px; }
+  .feedback { min-height: 26px; margin-top: 14px; font-weight: 600; }
+  .feedback.ok { color: var(--good); } .feedback.no { color: var(--bad); }
+  .score { font-size: 48px; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; text-align: left; font-size: 14px; }
+  th, td { padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.bad { color: var(--bad); } td.good { color: var(--good); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>The elements</h1>
+    <div class="modes" role="tablist">
+      <button class="on" data-mode="study">Study</button>
+      <button data-mode="quiz">Quiz</button>
+    </div>
+  </header>
+
+  <section id="study" class="pane">
+    <div class="boxes" id="boxes"></div>
+    <div class="meta"><span id="sessionLbl"></span><span id="countLbl"></span></div>
+    <div class="progress"><i id="bar"></i></div>
+    <div id="cardArea"></div>
+    <div class="keys"><kbd>Space</kbd> flip · <kbd>←</kbd><kbd>→</kbd> previous / next · <kbd>K</kbd> knew it · <kbd>J</kbd> didn't · <kbd>S</kbd> shuffle</div>
+  </section>
+
+  <section id="quiz" class="pane hidden"></section>
+</main>
+
+<script>
+const ELEMENTS = [
+  ["H", "Hydrogen", 1, "nonmetal", "The lightest element: about three quarters of the ordinary matter in the universe by mass."],
+  ["He", "Helium", 2, "noble gas", "Found in the Sun's spectrum before it was found on Earth."],
+  ["Li", "Lithium", 3, "alkali metal", "The lightest metal; it carries the charge in most rechargeable batteries."],
+  ["C", "Carbon", 6, "nonmetal", "Diamond and graphite are both pure carbon; it is the basis of organic chemistry."],
+  ["N", "Nitrogen", 7, "nonmetal", "About 78% of the air you breathe."],
+  ["O", "Oxygen", 8, "nonmetal", "The most abundant element in Earth's crust by mass."],
+  ["Na", "Sodium", 11, "alkali metal", "Its symbol comes from the Latin natrium; it reacts violently with water."],
+  ["Al", "Aluminium", 13, "post-transition metal", "The most abundant metal in Earth's crust."],
+  ["Si", "Silicon", 14, "metalloid", "The semiconductor most computer chips are made of."],
+  ["S", "Sulfur", 16, "nonmetal", "A yellow solid, called brimstone in older texts."],
+  ["Cl", "Chlorine", 17, "halogen", "A yellow-green gas, used to disinfect drinking water."],
+  ["K", "Potassium", 19, "alkali metal", "Its symbol comes from the Latin kalium."],
+  ["Ca", "Calcium", 20, "alkaline earth metal", "Bones and teeth are built largely from calcium compounds."],
+  ["Fe", "Iron", 26, "transition metal", "Its symbol comes from the Latin ferrum; most of Earth's core is iron."],
+  ["Cu", "Copper", 29, "transition metal", "Its symbol comes from the Latin cuprum; most electrical wiring is copper."],
+  ["Ag", "Silver", 47, "transition metal", "Its symbol comes from the Latin argentum; the best electrical conductor of all."],
+  ["W", "Tungsten", 74, "transition metal", "Its symbol comes from its other name, wolfram; the highest melting point of any metal."],
+  ["Au", "Gold", 79, "transition metal", "Its symbol comes from the Latin aurum; it does not tarnish in air."],
+  ["Hg", "Mercury", 80, "transition metal", "The only metal that is liquid at room temperature."],
+  ["Pb", "Lead", 82, "post-transition metal", "Its symbol comes from the Latin plumbum, as does the word plumbing."],
+].map(([sym, name, z, cat, fact]) => ({ sym, name, z, cat, fact }));
+
+const $ = s => document.querySelector(s);
+const shuffle = xs => { const a = xs.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+// ── Leitner: five boxes; box n comes up every 2^(n-1) sessions. A known card moves up one box, a missed one back to box 1.
+const INTERVAL = [1, 2, 4, 8, 16];
+const box = Object.fromEntries(ELEMENTS.map(e => [e.sym, 1]));
+let session = 1, queue = [], pos = 0, flipped = false, reviewed = new Set();
+const isDue = sym => (session - 1) % INTERVAL[box[sym] - 1] === 0;
+
+function startSession() {
+  queue = shuffle(ELEMENTS.filter(e => isDue(e.sym)));
+  pos = 0; flipped = false; reviewed = new Set();
+  renderStudy();
+}
+
+function renderBoxes(bumped) {
+  $("#boxes").innerHTML = INTERVAL.map((iv, i) => {
+    const n = ELEMENTS.filter(e => box[e.sym] === i + 1).length;
+    const due = (session - 1) % iv === 0;
+    return `<div class="lbox ${due ? "due" : ""} ${bumped === i + 1 ? "bump" : ""}"><b>${n}</b><span>Box ${i + 1} · every ${iv === 1 ? "session" : iv + " sessions"}</span></div>`;
+  }).join("");
+  if (bumped) setTimeout(() => document.querySelectorAll(".lbox.bump").forEach(b => b.classList.remove("bump")), 220);
+}
+
+function renderStudy(bumped) {
+  renderBoxes(bumped);
+  $("#sessionLbl").textContent = `Session ${session}`;
+  $("#countLbl").textContent = `${reviewed.size} of ${queue.length} sorted`;
+  $("#bar").style.width = queue.length ? (100 * reviewed.size / queue.length) + "%" : "100%";
+  const area = $("#cardArea");
+  if (reviewed.size === queue.length) {
+    area.innerHTML = `<div class="done"><div class="score">✓</div><p>Session ${session} done: every card due today is sorted.</p>
+      <button class="b primary" id="nextSession">Start session ${session + 1}</button></div>`;
+    $("#nextSession").onclick = () => { session++; startSession(); };
+    return;
+  }
+  const e = queue[pos];
+  const sorted = reviewed.has(e.sym);
+  area.innerHTML = `
+    <div class="stage"><div class="flash ${flipped ? "flipped" : ""}" id="flash" tabindex="0" aria-label="Flashcard, press Space to flip">
+      <div class="face front"><span class="num">${pos + 1} / ${queue.length}</span><span class="cat">box ${box[e.sym]}</span>
+        <div class="sym">${e.sym}</div><div class="tap">Click or press Space to turn over</div></div>
+      <div class="face back"><span class="num">${e.z}</span><span class="cat">${e.cat}</span>
+        <div class="name">${e.name}</div><div class="fact">${e.fact}</div></div>
+    </div></div>
+    <div class="controls">
+      <div class="grp"><button class="b" id="prev" ${pos === 0 ? "disabled" : ""}>← Previous</button>
+        <button class="b" id="next" ${pos === queue.length - 1 ? "disabled" : ""}>Next →</button>
+        <button class="b" id="shuf">Shuffle</button></div>
+      <div class="grp"><button class="b bad" id="no" ${sorted ? "disabled" : ""}>Didn't know<kbd>J</kbd></button>
+        <button class="b good" id="yes" ${sorted ? "disabled" : ""}>Knew it<kbd>K</kbd></button></div>
+    </div>`;
+  $("#flash").onclick = flip;
+  $("#prev").onclick = () => go(-1);
+  $("#next").onclick = () => go(1);
+  $("#shuf").onclick = doShuffle;
+  $("#yes").onclick = () => grade(true);
+  $("#no").onclick = () => grade(false);
+}
+
+function flip() { flipped = !flipped; $("#flash").classList.toggle("flipped", flipped); }
+function go(d) {
+  const to = pos + d;
+  if (to < 0 || to >= queue.length) return;
+  const f = $("#flash");
+  f.classList.add("out-left");
+  setTimeout(() => { pos = to; flipped = false; renderStudy(); $("#flash").classList.add("in-right"); }, 180);
+}
+function grade(knew) {
+  const e = queue[pos];
+  if (reviewed.has(e.sym)) return;
+  box[e.sym] = knew ? Math.min(5, box[e.sym] + 1) : 1;
+  reviewed.add(e.sym);
+  const nextOpen = queue.findIndex((c, i) => i > pos && !reviewed.has(c.sym));
+  const anyOpen = queue.findIndex(c => !reviewed.has(c.sym));
+  pos = nextOpen >= 0 ? nextOpen : anyOpen >= 0 ? anyOpen : pos;
+  flipped = false;
+  renderStudy(box[e.sym]);
+}
+function doShuffle() {
+  const open = queue.filter(c => !reviewed.has(c.sym)), done = queue.filter(c => reviewed.has(c.sym));
+  queue = [...done, ...shuffle(open)];
+  pos = done.length < queue.length ? done.length : 0; flipped = false;
+  renderStudy();
+}
+
+// ── Quiz: ten questions, four choices each, symbol→name or name→symbol
+let quiz = null;
+function newQuiz() {
+  const picks = shuffle(ELEMENTS).slice(0, 10);
+  quiz = {
+    i: 0, score: 0, answered: null, mistakes: [],
+    qs: picks.map((e, k) => {
+      const ask = k % 2 === 0 ? "sym" : "name";
+      const give = ask === "sym" ? "name" : "sym";
+      const wrong = shuffle(ELEMENTS.filter(x => x !== e)).slice(0, 3);
+      return { e, ask, give, options: shuffle([e, ...wrong]).map(x => x[give]), answer: e[give] };
+    }),
+  };
+  renderQuiz();
+}
+function renderQuiz() {
+  const root = $("#quiz");
+  if (quiz.i >= quiz.qs.length) {
+    const pct = Math.round(100 * quiz.score / quiz.qs.length);
+    root.innerHTML = `<div class="q" style="text-align:center"><h2>Your score</h2><div class="score">${quiz.score} / ${quiz.qs.length}</div>
+      <p style="color:var(--muted)">${pct === 100 ? "Perfect." : pct >= 70 ? "Well done." : "Worth another round in Study."}</p>
+      ${quiz.mistakes.length ? `<table><tr><th>Question</th><th>You said</th><th>Answer</th></tr>${quiz.mistakes.map(m =>
+        `<tr><td>${m.q}</td><td class="bad">${m.said}</td><td class="good">${m.answer}</td></tr>`).join("")}</table>` : ""}
+      <p><button class="b primary" id="again">New quiz<kbd>Enter</kbd></button></p></div>`;
+    $("#again").onclick = newQuiz;
+    return;
+  }
+  const q = quiz.qs[quiz.i];
+  const prompt = q.ask === "sym" ? `Which element is <b>${q.e.sym}</b>?` : `What is the symbol for <b>${q.e.name}</b>?`;
+  root.innerHTML = `<div class="meta"><span>Question ${quiz.i + 1} of ${quiz.qs.length}</span><span>Score ${quiz.score}</span></div>
+    <div class="progress"><i style="width:${100 * quiz.i / quiz.qs.length}%"></i></div>
+    <div class="q"><h2>${q.ask === "sym" ? "Symbol → name" : "Name → symbol"}</h2><div class="prompt">${prompt}</div>
+      <div class="opts">${q.options.map((o, k) => `<button class="opt" data-k="${k}"><small>${k + 1}</small>${o}</button>`).join("")}</div>
+      <div class="feedback" id="fb"></div>
+      <div class="controls"><span></span><button class="b primary" id="qnext" disabled>Next<kbd>Enter</kbd></button></div></div>`;
+  root.querySelectorAll(".opt").forEach(b => b.onclick = () => answer(+b.dataset.k));
+  $("#qnext").onclick = nextQ;
+}
+function answer(k) {
+  const q = quiz.qs[quiz.i];
+  if (quiz.answered !== null || k >= q.options.length) return;
+  quiz.answered = k;
+  const right = q.options[k] === q.answer;
+  if (right) quiz.score++;
+  else quiz.mistakes.push({ q: q.ask === "sym" ? q.e.sym : q.e.name, said: q.options[k], answer: q.answer });
+  document.querySelectorAll(".opt").forEach((b, i) => {
+    b.disabled = true;
+    if (q.options[i] === q.answer) b.classList.add("right");
+    else if (i === k) b.classList.add("wrong");
+  });
+  const fb = $("#fb");
+  fb.className = "feedback " + (right ? "ok" : "no");
+  fb.textContent = right ? `Right: ${q.e.name} is ${q.e.sym}.` : `Not quite: ${q.e.name} is ${q.e.sym}.`;
+  $("#qnext").disabled = false; $("#qnext").focus();
+}
+function nextQ() { if (quiz.answered === null) return; quiz.i++; quiz.answered = null; renderQuiz(); }
+
+// ── Mode switch and keyboard
+let mode = "study";
+document.querySelectorAll(".modes button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll(".modes button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+  $("#study").classList.toggle("hidden", m !== "study");
+  $("#quiz").classList.toggle("hidden", m !== "quiz");
+  if (m === "quiz" && !quiz) newQuiz();
+}
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (mode === "study") {
+    if (reviewed.size === queue.length) { if (e.key === "Enter") { session++; startSession(); } return; }
+    if (e.key === " ") { e.preventDefault(); flip(); }
+    else if (e.key === "ArrowLeft") go(-1);
+    else if (e.key === "ArrowRight") go(1);
+    else if (e.key === "k" || e.key === "ArrowUp") { e.preventDefault(); grade(true); }
+    else if (e.key === "j" || e.key === "ArrowDown") { e.preventDefault(); grade(false); }
+    else if (e.key === "s") doShuffle();
+  } else {
+    if (quiz.i >= quiz.qs.length) { if (e.key === "Enter") newQuiz(); return; }
+    if (/^[1-4]$/.test(e.key)) answer(+e.key - 1);
+    else if (e.key === "Enter") { e.preventDefault(); nextQ(); }
+  }
+});
+
+startSession();
+</script>
+</body>
+</html>
