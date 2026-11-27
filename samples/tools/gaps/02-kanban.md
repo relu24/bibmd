@@ -38,14 +38,18 @@ Proven headless with `/tmp/bibmd-tw-next/bibmd --png … --script`:
 
 ## Gaps
 
-### 1. No drag and drop — **closed** (a preview **still open**)
+### 1. No drag and drop — **closed**
 - **Now:** `box(id: "card-…")` returns `pressed` / `released` / `hovered`; the drop is the reference's
   pattern plus a `moveTo(id, col, before)` that places the card before the hovered card, so order within
   a column changes too. The drop target and the insertion line are drawn from two states (`overCol`,
   `overCard`) set on each press-move, because a box's `hovered` is only known after it has drawn.
-- **Still open (cosmetic):** the card does not follow the pointer: `at:` is accepted but not drawn, so
-  there is no drag image; the source is dimmed with `opacity: 0.4` instead. Proposed: draw `at:`, or let
-  bibmd draw a held box's ghost under the pointer by itself.
+- **Closed (animation branch):** the board is a `box(id: "board")`, so it hears a card's press with the
+  pointer in its own terms (`board.x`, `board.y`); once the card has moved 4 px a state keeps that point, and
+  a `box(at: [x, y], appear: "pop")` draws the card's image there, over the columns. The cards say
+  `animate: {ms: 320, ease: "spring"}`, so a dropped card slides from where it was to its new place, and
+  the cards around it close the gap. Proved headless: `move:bibbox-card-2@0.5,0.8;down;glide:700,500:300`
+  and a `png:` step show the image under the pointer; `glide:1090,455:300;up;wait:50;png:…` shows the card
+  half way from To do to Done.
 
 ### 2. A box cannot be clicked — **closed** (double-click **still open**)
 - **Now:** cards, titles and filter pills are boxes with `id` and `clicked`. No Edit button on every card:
@@ -143,4 +147,4 @@ New in round 2:
    `focus(key)`, for inline rename and "/" to search.
 2. **Events that reach the outer box** (a press on a nested box with an id also presses its parent), so a
    card with clickable parts can still be dragged from anywhere without duplicated handlers.
-3. **Overlays:** a drag image under the pointer (`at:` drawn), and `dialog(…)` for the new-card form.
+3. **Overlays:** `dialog(…)` for the new-card form (the drag image is closed: `at:` is drawn).

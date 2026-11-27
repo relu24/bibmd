@@ -87,10 +87,11 @@ tabs("Mode") {
       let c = cards[queue[pos]]
       let i = queue[pos]
       let done = sorted.includes(i)
-      // the card: click it (or Space) to turn it over
+      // the card: click it (or Space) to turn it over. turn: makes it turn over, through edge on,
+      // whenever flipped changes; the side it turns from shows until it is half way.
       let face = box(id: "card", width: fill, height: 290, radius: 18, border: 1, padding: [16, 20],
         borderColor: flipped ? accent : border, background: flipped ? fade(accent, 0.06) : raised,
-        hover: {borderColor: accent}, gap: 6, align: center) {
+        hover: {borderColor: accent}, gap: 6, align: center, turn: flipped, animate: {ms: 420, ease: "in-out"}) {
         box(dir: "row", width: fill, align: center) {
           box(width: fill) { text(flipped ? "{c.z}" : "{pos + 1} / {queue.length}", color: muted, face: mono) }
           badge(flipped ? c.cat : "box {boxes[i]}", tone: accent)
@@ -164,9 +165,10 @@ tabs("Mode") {
           for o in q.options {
             let k = index
             let tone = !answered ? null : o == answer ? success : k == qz.picked ? danger : null
+            // a wrong pick shakes (shake: runs when its value changes), and the colours fade in
             let b = box(id: "opt-{k}", dir: "row", gap: 8, padding: [12, 14], radius: 12, border: 1.5,
               borderColor: tone ?? border, background: tone == null ? null : fade(tone, 0.16),
-              hover: answered ? null : {borderColor: accent}) {
+              hover: answered ? null : {borderColor: accent}, shake: tone == danger, animate: 200) {
               text("{k + 1}", size: sm, color: muted); text(o)
             }
             if b.clicked || key("{k + 1}").pressed { pick = k }

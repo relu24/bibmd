@@ -66,11 +66,12 @@ of its neighbours through the same `reveal`, which now takes a list of starts.
 and `key("enter")` open it, `key("f")` sets the Flag mode toggle, and `button("New game",
 key: "n")`. The ring is the document's own state, not a focus the host knows of; that is fine here.
 
-### 9. No feedback while pressing, no animation — **narrowed**
+### 9. No feedback while pressing, no animation — **closed**
 `cell.pressed` and `cell.released` set a `down` state, so the face is 😮 while a square is held,
-as in the artifact. Opened squares still appear at once, without the pop: there is no
-transition on a box's properties.
-- **Proposed API:** `box(transition: 150)` animating background, opacity and size changes.
+as in the artifact. A square says `pulse: shown, animate: 160`: it pops (grows and settles) when it
+opens, and its colour fades from closed to open; the board says `shake: g.status == "lost"`. Proved
+headless: `click:bibbox-c40;png:…;wait:25;png:…` shows the opened squares grown over their
+neighbours' edges and part way to their open colour.
 
 ### 10. History of games with Replay — **closed**
 `fn play(next)` sets the game and, when it ended, prepends `{level, seed, result, time}` to a
@@ -108,4 +109,4 @@ nothing here" after a click that only `set()`s** (no note now).
 1. A bounded loop (or a `reach` builtin): the flood fill is still an N-round reduce, the one
    part that grows with the board.
 2. A click on an interactive block outside its widgets should not open the source.
-3. Transitions on a box (the pop of an opened square), and hex tones with a dark value.
+3. Hex tones with a dark value (the pop of an opened square is closed: `pulse:`).

@@ -36,17 +36,22 @@ public sealed partial class Bib
         Note Measure(string s) => new(s, Text.Width(runtime, s, font));
 
         // Series in a stack add up: each one's band goes from the top of the one below to its own.
-        var stacks = new Dictionary<FrameNode, (double[] Base, double[] Top)>();
-        var running = new Dictionary<string, double[]>();
-        foreach (var m in marks.Where(m => m.Type == "series" && m.Text("stack") is not null))
+        static Dictionary<FrameNode, (double[] Base, double[] Top)> Stacks(List<FrameNode> marks)
         {
-            var ys = ((List<object?>)m.Props["ys"]!).Select(v => (double)v!).ToArray();
-            string name = m.Text("stack")!;
-            var below = running.TryGetValue(name, out var r) && r.Length == ys.Length ? r : new double[ys.Length];
-            var top = ys.Select((v, i) => below[i] + (double.IsFinite(v) ? v : 0)).ToArray();
-            stacks[m] = (below, top);
-            running[name] = top;
+            var stacks = new Dictionary<FrameNode, (double[] Base, double[] Top)>();
+            var running = new Dictionary<string, double[]>();
+            foreach (var m in marks.Where(m => m.Type == "series" && m.Text("stack") is not null))
+            {
+                var ys = ((List<object?>)m.Props["ys"]!).Select(v => (double)v!).ToArray();
+                string name = m.Text("stack")!;
+                var below = running.TryGetValue(name, out var r) && r.Length == ys.Length ? r : new double[ys.Length];
+                var top = ys.Select((v, i) => below[i] + (double.IsFinite(v) ? v : 0)).ToArray();
+                stacks[m] = (below, top);
+                running[name] = top;
+            }
+            return stacks;
         }
+        var stacks = Stacks(marks);
 
         // The values each axis must show: what is drawn on it, or the range the plot gives.
         IEnumerable<double> On(string axis) => marks.SelectMany(m => m.Type switch
@@ -58,6 +63,20 @@ public sealed partial class Bib
         });
         var x = AxisOf(n.Props.GetValueOrDefault("x"), On("x"), log.Contains('x'), font, tight: true);
         var y = AxisOf(n.Props.GetValueOrDefault("y"), On("y"), log.Contains('y'), font, tight: false);
+
+        // Motion: the axes are the values', and the lines and dots ease to them (Motion.cs).
+        if (ChartTransition(n) is not null)
+        {
+            marks = marks.Select((m, i) =>
+            {
+                if (m.Type is not ("series" or "dots") || m.Props.GetValueOrDefault("ys") is not List<object?> ys) return m;
+                var copy = new FrameNode(m.Type);
+                foreach (var (key, v) in m.Props) copy.Props[key] = v;
+                copy.Props["ys"] = Eased(n, "ys" + i, ys.Select(Values.Num)).Select(v => (object?)v).ToList();
+                return copy;
+            }).ToList();
+            stacks = Stacks(marks);
+        }
 
         var notes = marks.Where(m => m.Type is "rule" or "point" && m.Text("label") is not null)
             .ToDictionary(m => m, m => Measure(m.Text("label")!));
@@ -473,6 +492,12 @@ public sealed partial class Bib
         var font = runtime.FontInScope(Smaller);
         var labels = items.Select(i => Values.Str(i.GetValueOrDefault("label") ?? "")).ToList();
         var shown = values.Select(v => Evaluator.Fmt(v, null, Math.Abs(v) >= 100_000, false) + unit).ToList();
+        // Motion: the bars ease to new values and a new top (Motion.cs); their numbers are written as they are.
+        var eased = Eased(n, "bars", segments.SelectMany(sg => sg.Select(p => p.Value)).Append(max));
+        int e = 0;
+        segments = segments.Select(sg => sg.Select(p => (Value: eased[e++], p.Tone)).ToList()).ToList();
+        values = segments.Select(sg => sg.Sum(p => p.Value)).ToList();
+        max = Math.Max(eased[^1], 1e-12);
 
         if (n.Text("dir") == "column")
         {
@@ -588,6 +613,9 @@ public sealed partial class Bib
         float shareCol = shares.Count == 0 ? 0f : shares.Max(s => Text.Width(runtime, s, font)) + 2f;
         float legendW = 10f + 8f + labelCol + 12f + amountCol + 10f + shareCol;
         bool beside = width >= size + 24f + legendW;
+        // Motion: the slices ease to new shares (Motion.cs); the legend writes the values as they are.
+        values = Eased(n, "pie", values).ToList();
+        total = values.Sum();
 
         var outer = runtime.BeginParent(beside ? runtime.Row() : runtime.Column());
         Box box = runtime.Box();

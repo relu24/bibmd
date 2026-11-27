@@ -1,6 +1,6 @@
 # Maintainer: Daniel Madsen <daniel.christian.madsen@gmail.com>
 pkgname=bibmd-bin
-pkgver=0.1.6
+pkgver=0.1.7
 pkgrel=1
 pkgdesc="A zen Markdown reader that edits a block in place when it is clicked (Wayland)"
 arch=('x86_64')
@@ -13,7 +13,7 @@ provides=('bibmd')
 conflicts=('bibmd')
 options=('!strip' '!debug')
 source=("bibmd-$pkgver-x86_64.tar.gz::$url/releases/download/v$pkgver/bibmd-$pkgver-x86_64.tar.gz")
-sha256sums=('fc0c0b8866be21351d6e3d7ffcd5f388f3ffdc9b6743573a9c938acd2fa8237a')
+sha256sums=('3eb85ed7f72a1a5cc5f6dc72a491b65dcb5b5a0cd5b452091e723f49b62b9420')
 
 package() {
     cd "bibmd-$pkgver-x86_64"

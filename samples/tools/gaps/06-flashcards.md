@@ -46,11 +46,13 @@ Proved headless with `/tmp/bibmd-tw-next/bibmd --script`:
   event, so there is no "seed once on open". **Proposed:** `state("seed", entropy())` with a
   value the host draws once per open.
 
-### 3. The card does not turn: **still open**
+### 3. The card does not turn: **closed** (the slide between cards **still open**)
 - **Artifact:** rotates in 3D over 0.55 s, and slides out left / in right between cards.
-- **Bib:** the face changes at once; the border turns accent on the back face.
-- **Proposed API (unchanged):** `box(…, transition: "flip" | "slide" | "fade", key: c.sym)`, or
-  `animate: ms` on a keyed box.
+- **Now:** `box(id: "card", …, turn: flipped, animate: {ms: 420, ease: "in-out"})`: when `flipped`
+  changes the card narrows to edge on showing the side it was, and widens showing the other; its
+  border and background fade. A wrong quiz pick shakes (`shake: tone == danger`). Proved headless:
+  `click:bibbox-card;wait:150;png:…;wait:75;png:…` shows the front narrowed, then the back narrow.
+- **Still open:** the slide out and in between cards (Next and Previous change the card at once).
 
 ### 4. The card itself cannot be clicked: **closed**
 - **Now:** `let face = box(id: "card", …, hover: {borderColor: accent}) { … }` and
@@ -102,7 +104,6 @@ New, while rewriting:
 
 ## Top 3 still missing
 
-1. Transitions on a keyed box (the 3D turn, the slide between cards, the shake on a wrong pick):
-   the one thing the artifact does that the clone cannot approach.
+1. The slide between cards (the turn and the shake on a wrong pick are closed: `turn:`, `shake:`).
 2. Per-open entropy (`entropy()` for a state's default), so the first deal differs per reader.
 3. `--check` running every tab, and `--script` able to name tabs and digit keys as `key()` does.

@@ -36,5 +36,12 @@ string Doc(params string[] blocks) =>
         errors == 1 && lines.Any(l => l.Contains("click on a box:") && l.Contains("error")) && lines.Any(l => l == "events.bib.md: key “k”: set k"), lines);
 }
 
+{
+    // Motion is checked like the rest: a wrong ease is an error at its line, the props it knows warn of nothing.
+    var (lines, errors) = Check.Report(Doc("box(animate: 200, appear: \"pop\", turn: 1, shake: 2, pulse: 3, at: [0, 0]) { }", "box(animate: {ease: \"wobbly\"}) { }"), "motion.bib.md");
+    Expect("motion props warn of nothing, and a wrong ease is an error at its line",
+        errors == 1 && !lines.Any(l => l.Contains("warning:")) && lines.Any(l => l.Contains("error:") && l.Contains("ease") && l.Contains(" at line 11:")), lines);
+}
+
 Console.WriteLine($"{passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

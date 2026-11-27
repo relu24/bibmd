@@ -113,7 +113,8 @@ box(dir: "row", gap: 12, align: center, justify: between) {
 let cursor = state("cursor", -1)
 box(align: center) {
   // An id on the board too, so a click between squares is the board's, not the block's.
-  box(id: "board", gap: 3, padding: 12, radius: 12, background: raised) {
+  // and the board shakes when a mine goes off.
+  box(id: "board", gap: 3, padding: 12, radius: 12, background: raised, shake: g.status == "lost") {
     for r in range(L.h) {
       box(dir: "row", gap: 3) {
         for c in range(r * w, r * w + w) {
@@ -126,9 +127,10 @@ box(align: center) {
             : over && isMine && !isFlag ? fade(danger, 0.18)
             : over && isFlag && !isMine ? fade(muted, 0.3)
             : isOpen ? surface : fade(muted, 0.28)
+          // A square pops as it opens (pulse: runs when its value changes) and its colour fades in.
           let cell = box(id: "c{c}", width: L.size, height: L.size, radius: 6, align: center, justify: center,
             background: bg, border: c == cursor ? 2 : 0, borderColor: accent,
-            hover: shown ? {} : {background: fade(muted, 0.45)}) {
+            hover: shown ? {} : {background: fade(muted, 0.45)}, pulse: shown, animate: 160) {
             if over && isMine && !isFlag { text("●", weight: bold, color: c == g.boom ? surface : ink) }
             else if over && isFlag && !isMine { text("✕", weight: bold, color: danger) }
             else if isFlag { text("⚑", weight: bold, color: "#e05a1c") }

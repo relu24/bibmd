@@ -79,7 +79,10 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             }
         }
         _frame = _program.Frame(front, dataBlocks, sources, this, hovered);
-        if (_frame is not null) Ring(DateTimeOffset.Now);
+        if (_program.Renewed) _settling = SettleFrames;
+        if (_frame is null) return;
+        Ring(DateTimeOffset.Now);
+        Identify();
     }
 
     // The alarms whose time has come ring, once each; then the window is woken for the clock or the next one.
@@ -156,8 +159,13 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         if (_frame is null || _program.Session is null || !_ordinal.TryGetValue(index, out int k)) return false;
         _widgets[k] = [];
         var col = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
+        _blockBox = col;
+        // A block slides what moves inside it once it has settled: not in the first frames of a document, when
+        // what is measured is still arriving, nor in a frame its width changed (a window resized).
+        _slides = _settling == 0 && _blockWidths.GetValueOrDefault(k) == width;
+        _blockWidths[k] = width;
         if (k == 0 && _program.DataError is { } de) Problem("Front matter: " + de, width);
-        DrawAll(_frame.Blocks[k], k, width);
+        DrawAll(_frame.Blocks[k], k, width, "block:" + k);
         if (_frame.Errors[k] is { } e) Problem(e.Message, width);
         if (_program.Notices.TryGetValue(k, out var notice))
         {
@@ -189,13 +197,18 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
     // The narrowest a grid's cell and a row's child are drawn: narrower, they go onto more lines.
     private const float MinCell = 120f, MinRowCell = 240f;
 
-    private void DrawAll(List<FrameNode> nodes, int k, float width)
+    // parent names the container across frames, for its boxes that appear and leave (Motion.cs).
+    private void DrawAll(List<FrameNode> nodes, int k, float width, string? parent = null)
     {
-        for (int i = 0; i < nodes.Count; i++)
+        // The boxes placed with at: last, over the rest.
+        var all = parent is null ? nodes : Presented(parent, nodes);
+        int drawn = 0;
+        foreach (var n in all.Where(c => !Floats(c)))
         {
-            if (i > 0) runtime.Gap(Gap);
-            Draw(nodes[i], k, width);
+            if (drawn++ > 0) runtime.Gap(Gap);
+            Draw(n, k, width);
         }
+        foreach (var n in all.Where(Floats)) Draw(n, k, Want(n, width) ?? width);
     }
 
     private void Claim(int k, UiNode node) => _widgets[k].Add(node);
@@ -281,7 +294,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 if (n.Text("title") is { } title) TitleLine(title, inner, Size0, n.Text("badge"), n.Text("badgeTone") ?? n.Text("tone"));
                 if (n.Text("subtitle") is { } sub) Wrapped(sub, inner, Smaller, UiColor.TextSecondary, FontWeight.Italic);
                 if (n.Children.Count > 0) runtime.Gap(Gap);
-                DrawAll(n.Children, k, inner);
+                DrawAll(n.Children, k, inner, Ident(n));
                 if (n.Text("footer") is { } footer)
                 {
                     runtime.Gap(Gap);
@@ -295,7 +308,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             case "section":
             {
                 var section = runtime.BeginParent(Section.Build(runtime, n.Text("title") ?? ""));
-                DrawAll(n.Children, k, width);
+                DrawAll(n.Children, k, width, Ident(n));
                 runtime.EndParent(section);
                 break;
             }
@@ -323,14 +336,14 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 runtime.Gap(Tabs.PanelGap);
                 var panel = runtime.BeginParent(Tabs.Panel(runtime));
                 if (tabs.FirstOrDefault(t => Values.Truthy(t.Props.GetValueOrDefault("active"))) is { } shown)
-                    DrawAll(shown.Children, k, width - 2f * TabsPanelPad);
+                    DrawAll(shown.Children, k, width - 2f * TabsPanelPad, Ident(shown));
                 runtime.EndParent(panel);
                 break;
             }
             case "column":
             {
                 var col = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
-                DrawAll(n.Children, k, width);
+                DrawAll(n.Children, k, width, Ident(n));
                 runtime.EndParent(col);
                 break;
             }
@@ -607,6 +620,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
     // A colour: a role, a role faded ("accent@0.15"), or a hex.
     private static UiColor Colour(object? value, UiColor otherwise)
     {
+        if (value is UiColor eased) return eased;   // a colour on its way (Motion.cs)
         if (value is not string s) return otherwise;
         int at = s.LastIndexOf('@');
         if (at > 0 && float.TryParse(s[(at + 1)..], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var alpha))
@@ -694,7 +708,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 if (n.Text("width") == "fill") return null;
                 var pad = Insets(n.Props.GetValueOrDefault("padding"));
                 float gap = Px(n.Props.GetValueOrDefault("gap")) ?? 0f;
-                var kids = n.Children.Where(c => c.Type != "layer").ToList();
+                var kids = n.Children.Where(c => c.Type != "layer" && !Floats(c)).ToList();
                 float inner = 0f;
                 if (n.Text("dir") == "row")
                 {
@@ -716,17 +730,37 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
 
     private void DrawBox(FrameNode n, int k, float width)
     {
+        // Motion: a box that is appearing or leaving, turning over, or easing to new props (Motion.cs).
+        (float Progress, bool Leaving, string Key)? presence = _presenceOf.Remove(n, out var pr) ? pr : null;
+        string ident = presence?.Key ?? Ident(n);
+        var tr = TransitionOf(n.Props.GetValueOrDefault("animate"));
+        n = Turned(n, ident, out float scaleX);
+        bool wasGhost = _ghost;
+        _ghost |= presence is { Leaving: true };
+        string? boxId = _ghost ? null : n.Key;
+
         var pad = Insets(n.Props.GetValueOrDefault("padding"));
         float w = Px(n.Props.GetValueOrDefault("width")) ?? width;
         float? h = Px(n.Props.GetValueOrDefault("height"));
+        if (tr is { } sized)
+        {
+            if (Px(n.Props.GetValueOrDefault("width")) is not null) w = runtime.Animate("bib:" + ident, "width", w, sized);
+            if (h is { } hh0) h = runtime.Animate("bib:" + ident, "height", hh0, sized);
+        }
         bool row = n.Text("dir") == "row";
         float gap = Px(n.Props.GetValueOrDefault("gap")) ?? 0f;
-        Box box = n.Key is { } boxId ? runtime.BoxFromId("bibbox-" + boxId, InteractionKinds.LeftPress | InteractionKinds.RightPress) : runtime.Box();
+        Box box = boxId is not null ? runtime.BoxFromId("bibbox-" + boxId, InteractionKinds.LeftPress | InteractionKinds.RightPress) : runtime.Box();
         bool wraps = row && n.Props.GetValueOrDefault("wrap") is true;
         // A row that wraps is a column of lines, each a row.
         box.ChildLayoutAxis = row && !wraps ? LayoutAxis.X : LayoutAxis.Y;
         box.SizeX = SemanticSize.Pixels(w);
         box.SizeY = h is { } hh ? SemanticSize.Pixels(hh) : SemanticSize.ChildrenSum();
+        // at: [x, y] floats it at that place in its parent, out of the flow, over what is there.
+        if (n.Props.GetValueOrDefault("at") is List<object?> { Count: 2 } at && at[0] is double ax && at[1] is double ay)
+        {
+            box.FloatingX = box.FloatingY = true;
+            box.FixedPosition = new Vector2((float)ax, (float)ay);
+        }
         box.Style.Padding = pad;
         if (n.Props.GetValueOrDefault("background") is { } bg) box.Style.BackgroundColor = Colour(bg, UiColor.SurfaceRaised);
         if (Px(n.Props.GetValueOrDefault("border")) is { } bw && bw > 0f)
@@ -736,20 +770,23 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         }
         if (Px(n.Props.GetValueOrDefault("radius")) is { } r) box.Style.CornerRadius = r;
         if (Px(n.Props.GetValueOrDefault("opacity")) is { } o) box.Style.Opacity = o;
+        Move(n, ident, box, tr, scaleX, presence);
         // Given a size in px, a box keeps to it: what does not fit is cut off, not laid over its neighbours.
         if (Px(n.Props.GetValueOrDefault("width")) is not null || h is not null) box.Claims |= InteractionKinds.Clip;
         // A layer draws under the children, clipped to the box: w and h are the box's size.
         if (n.Children.FirstOrDefault(c => c.Type == "layer") is { } layer)
         {
+            layer = EasedLayer(layer, ident);
             var labels = Labels(layer);
             box.Draw = (b, ctx) => DrawLayer(ctx, layer, labels, b.Extent.X, b.Extent.Y);
         }
-        var kids = n.Children.Where(c => c.Type != "layer").ToList();
+        var all = Presented(ident, n.Children.Where(c => c.Type != "layer").ToList());
+        var kids = all.Where(c => !Floats(c)).ToList();
         float inner = MathF.Max(0f, w - pad.Left - pad.Right);
         // Centring needs a size of its own along that axis: only a box given one centres.
         bool along = n.Text("justify") == "center" && (row ? Px(n.Props.GetValueOrDefault("width")) : h) is not null;
         bool across = n.Text("align") == "center" && (row ? h : (float?)w) is not null;
-        if (n.Key is { } around) _around.Add((around, box));
+        if (boxId is { } around) _around.Add((around, box));
         using (runtime.Parent(box))
         {
             if (along) runtime.Spacer(Size.Fill);
@@ -766,14 +803,20 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 }
             }
             if (along) runtime.Spacer(Size.Fill);
+            // The boxes placed with at:, last, so they are drawn over the rest.
+            foreach (var f in all.Where(Floats)) Draw(f, k, Want(f, inner) ?? inner);
         }
         // After its children: a box with an id inside it asks about the pointer first, so a press on it is its own.
-        if (n.Key is not null)
+        if (boxId is not null)
         {
             _around.RemoveAt(_around.Count - 1);
             Pointer(n, k, box);
         }
+        _ghost = wasGhost;
     }
+
+    // A box placed with at: is out of the flow of its parent.
+    private static bool Floats(FrameNode n) => n.Type == "box" && n.Props.GetValueOrDefault("at") is List<object?> { Count: 2 };
 
     // A row's children: each as wide as it wants, the ones that fill sharing what is left.
     private void RowOf(List<FrameNode> kids, int k, float inner, float gap, bool wrap, bool across, bool between = false)
@@ -1100,7 +1143,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         TitleLine(n.Text("title") ?? "", inner, Size0, n.Text("status"), tone);
         if (n.Text("who") is { } who) Wrapped(who, inner, Smaller, UiColor.TextSecondary);
         if (n.Children.Count > 0) runtime.Gap(MathF.Round(Gap * 0.6f));
-        DrawAll(n.Children, k, inner);
+        DrawAll(n.Children, k, inner, Ident(n));
         runtime.EndParent(body);
         runtime.EndParent(row);
     }
@@ -1465,6 +1508,9 @@ public sealed class BibProgram
     /// <summary>The alarms rung, by their time: each rings once, whichever place draws it.</summary>
     internal HashSet<double> Rang { get; } = [];
 
+    /// <summary>The last <see cref="Frame"/> made a new session: the document or its data changed, or it was the first.</summary>
+    internal bool Renewed { get; private set; }
+
     /// <summary>The program calls changed(): an input's change is an event.</summary>
     internal bool UsesChanged { get; private set; }
 
@@ -1486,6 +1532,7 @@ public sealed class BibProgram
     {
         if (sources.Count == 0) { Session = null; _frame = null; return null; }
         string key = (front ?? "") + "\u0001" + string.Join("\u0002", dataBlocks) + "\u0001" + string.Join("\u0002", sources);
+        Renewed = key != _key || Session is null;
         if (key != _key || Session is null)
         {
             var data = DocSession.DataFrom(front, dataBlocks, out var error);

@@ -158,73 +158,89 @@ let dropped = false
 let held = false
 let overCol = null
 let overCard = null
-row {
-  for col in cols {
-    let all = inCol(cards, col.id)
-    let shown = all.filter(visible)
-    let hot = over(col)
-    let target = moving != null && state("overCol", null) == col.id
-    let c = box(id: "col-{col.id}", gap: 8, padding: 10, radius: 14,
-        background: target ? fade(accent, 0.10) : hot ? fade(danger, 0.08) : fade(muted, 0.08),
-        border: 2, borderColor: target ? accent : hot ? fade(danger, 0.55) : fade(muted, 0.02)) {
-      box(dir: "row", gap: 8, align: center) {
-        text(col.name, weight: bold)
-        pill(shown.length == all.length ? "{all.length}" : "{shown.length}/{all.length}", tone: hot ? danger : muted)
-        if hot { text("over WIP limit ({col.limit})", size: sm, color: danger, weight: bold) }
-        else if col.limit != null { text("limit {col.limit}", size: sm, color: faint) }
-      }
-      if shown.length == 0 {
-        box(padding: [18, 8], radius: 10, border: 1, borderColor: border, align: center) {
-          text(all.length > 0 ? "No cards match" : "Drop cards here", size: sm, color: faint)
+let dragAt = state("dragAt", null)    // where the pointer is on the board while a card is dragged
+// The board has an id, so it hears a card's press and drag too, with the pointer in its own terms.
+let board = box(id: "board") {
+  row {
+    for col in cols {
+      let all = inCol(cards, col.id)
+      let shown = all.filter(visible)
+      let hot = over(col)
+      let target = moving != null && state("overCol", null) == col.id
+      let c = box(id: "col-{col.id}", gap: 8, padding: 10, radius: 14,
+          background: target ? fade(accent, 0.10) : hot ? fade(danger, 0.08) : fade(muted, 0.08),
+          border: 2, borderColor: target ? accent : hot ? fade(danger, 0.55) : fade(muted, 0.02)) {
+        box(dir: "row", gap: 8, align: center) {
+          text(col.name, weight: bold)
+          pill(shown.length == all.length ? "{all.length}" : "{shown.length}/{all.length}", tone: hot ? danger : muted)
+          if hot { text("over WIP limit ({col.limit})", size: sm, color: danger, weight: bold) }
+          else if col.limit != null { text("limit {col.limit}", size: sm, color: faint) }
         }
-      }
-      for k in shown {
-        let picked = sel == k.id
-        // where a dragged card would land: a line above the card it is over
-        if moving != null && moving != k.id && state("overCard", null) == k.id {
-          box(height: 3, radius: 2, background: accent)
+        if shown.length == 0 {
+          box(padding: [18, 8], radius: 10, border: 1, borderColor: border, align: center) {
+            text(all.length > 0 ? "No cards match" : "Drop cards here", size: sm, color: faint)
+          }
         }
-        let b = box(id: "card-{k.id}", padding: [8, 10, 8, 14], gap: 6, radius: 10, background: surface,
-            border: picked ? 2 : 1, borderColor: picked ? accent : border, opacity: moving == k.id ? 0.4 : 1,
-            hover: {borderColor: accent}, tip: "Drag to move. Click, then ← → Del Enter") {
-          layer { rect(0, 0, 4, h, fill: prioTone(k.prio)) }     // the priority stripe
-          if renaming?.id == k.id {
-            input("Rename", id: "rename")
-            text("Saved as you type. Enter twice closes, Escape undoes", size: 11, color: faint)
-          } else {
-            let t = box(id: "title-{k.id}", hover: {background: fade(accent, 0.08)}, tip: picked ? "Click to rename" : null) {
-              text(k.title, weight: bold, size: sm)
+        for k in shown {
+          let picked = sel == k.id
+          // where a dragged card would land: a line above the card it is over
+          if moving != null && moving != k.id && state("overCard", null) == k.id {
+            box(height: 3, radius: 2, background: accent)
+          }
+          // animate: a card slides to its new place when it moves (a drop, the arrow keys), and fades as it is lifted
+          let b = box(id: "card-{k.id}", padding: [8, 10, 8, 14], gap: 6, radius: 10, background: surface,
+              border: picked ? 2 : 1, borderColor: picked ? accent : border, opacity: moving == k.id ? 0.4 : 1,
+              hover: {borderColor: accent}, tip: "Drag to move. Click, then ← → Del Enter", animate: {ms: 320, ease: "spring"}) {
+            layer { rect(0, 0, 4, h, fill: prioTone(k.prio)) }     // the priority stripe
+            if renaming?.id == k.id {
+              input("Rename", id: "rename")
+              text("Saved as you type. Enter twice closes, Escape undoes", size: 11, color: faint)
+            } else {
+              let t = box(id: "title-{k.id}", hover: {background: fade(accent, 0.08)}, tip: picked ? "Click to rename" : null) {
+                text(k.title, weight: bold, size: sm)
+              }
+              // a box inside another answers first: the title selects the card, or renames it once selected
+              if t.pressed && moving == null { set("moving", k.id) }   // and it carries the card, as the card does
+              if t.pressed { held = true }
+              if t.released { dropped = true }
+              if t.clicked { if picked { set("renaming", {id: k.id, was: k.title}); set("rename", k.title) } else { set("sel", k.id) } }
             }
-            // a box inside another answers first: the title selects the card, or renames it once selected
-            if t.pressed && moving == null { set("moving", k.id) }   // and it carries the card, as the card does
-            if t.pressed { held = true }
-            if t.released { dropped = true }
-            if t.clicked { if picked { set("renaming", {id: k.id, was: k.title}); set("rename", k.title) } else { set("sel", k.id) } }
-          }
-          box(dir: "row", gap: 6, align: center) {
-            pill(k.tag, tone: tagTone(k.tag))
-            text(k.owner, size: sm, color: muted, width: fill)
-            text(k.prio, size: sm, face: mono, weight: bold, color: prioTone(k.prio))
-          }
-          if picked && renaming?.id != k.id {
-            row(fit: true) {
-              if button("Edit", id: "edit-{k.id}", style: ghost).clicked { openForm(k) }
-              if button("Delete", id: "del-{k.id}", style: ghost).clicked { remove(k.id) }
+            box(dir: "row", gap: 6, align: center) {
+              pill(k.tag, tone: tagTone(k.tag))
+              text(k.owner, size: sm, color: muted, width: fill)
+              text(k.prio, size: sm, face: mono, weight: bold, color: prioTone(k.prio))
+            }
+            if picked && renaming?.id != k.id {
+              row(fit: true) {
+                if button("Edit", id: "edit-{k.id}", style: ghost).clicked { openForm(k) }
+                if button("Delete", id: "del-{k.id}", style: ghost).clicked { remove(k.id) }
+              }
             }
           }
+          if b.pressed && renaming?.id != k.id {
+            held = true
+            if moving == null { set("moving", k.id) }
+          }
+          if b.clicked { set("sel", k.id) }
+          if b.released { dropped = true }
+          if b.hovered { overCard = k.id }
         }
-        if b.pressed && renaming?.id != k.id {
-          held = true
-          if moving == null { set("moving", k.id) }
-        }
-        if b.clicked { set("sel", k.id) }
-        if b.released { dropped = true }
-        if b.hovered { overCard = k.id }
       }
+      if c.hovered { overCol = col.id }
     }
-    if c.hovered { overCol = col.id }
+  }
+  // The card being dragged, under the pointer: at: places it on the board, over the columns.
+  let lifted = cards.find(c => c.id == moving)
+  if lifted != null && dragAt != null {
+    box(at: [dragAt.x - 20, dragAt.y - 16], width: 230, padding: [8, 12], radius: 10, background: surface,
+        border: 2, borderColor: accent, opacity: 0.94, appear: "pop") {
+      text(lifted.title, weight: bold, size: sm)
+      text("{lifted.owner} · {lifted.tag}", size: 11, color: muted)
+    }
   }
 }
+// Once it has moved a little, a held card is dragged: its image follows the pointer.
+if board.pressed && moving != null && abs(board.dx) + abs(board.dy) > 4 { set("dragAt", {x: board.x, y: board.y}) }
 
 // Each move while a card is held is a press: remember what is under the pointer, to draw the
 // target. On release, drop the card there: before the card it is over, or at the column's end.
@@ -234,5 +250,6 @@ if dropped {
   set("moving", null)
   set("overCol", null)
   set("overCard", null)
+  set("dragAt", null)
 }
 ```

@@ -19,6 +19,7 @@
 //   move:block-3     the pointer to the middle of a box by id, nothing pressed
 //   move:bib-plot-0@0.3,0.5   the pointer that far across and down a box (0 to 1 of its width and height)
 //   wait:500         frames for half a second (images load, scrolling settles)
+//   png:mid.png      this frame to a PNG, as it is: mid-animation, if something moves (a frame is 1/60 s of motion)
 //   drag:md-3:200    press at the start of a box's first line and drag that far right (selects text)
 //
 // --record FILE writes every frame, raw BGRA at the --size, to FILE (a fifo ffmpeg reads),
@@ -323,6 +324,9 @@ int Headless(string png)
                     Frame();
                     break;
                 }
+                case "png":
+                    File.WriteAllBytes(arg, FramePixels.Png(runtime, managed.Draw));
+                    break;
                 case "wait":
                     for (int t = 0; t < int.Parse(arg) / 25; t++) { Thread.Sleep(25); Frame(); }
                     break;
