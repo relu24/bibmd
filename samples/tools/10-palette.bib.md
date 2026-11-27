@@ -9,7 +9,7 @@ data:
     - { name: Complementary, offsets: [0, 180, 200] }
     - { name: Analogous, offsets: [0, 30, -30] }
     - { name: Triadic, offsets: [0, 120, 240] }
-    - { name: Split complementary, offsets: [0, 150, 210] }
+    - { name: Split, offsets: [0, 150, 210] }
   steps: [50, 100, 200, 300, 400, 500, 600, 700, 800, 900]
   lights: [97, 93, 85, 75, 63, 52, 43, 34, 25, 16]
 ---
@@ -36,65 +36,66 @@ let h = 0
 let s = 0
 let l = 0
 let pal = []
-box(dir: "row", gap: 16) {
-  // ---------- the base colour: a picker and three sliders that follow each other ----------
-  box(width: 300) {
-    card("Base colour") {
-      let base = colour("Base colour", value: "#2f6fd0", swatches: data.presets)
-      h = slider("Hue", 0, 360, value: 217, step: 1)
-      s = slider("Saturation", 0, 100, value: 63, step: 1)
-      l = slider("Lightness", 0, 100, value: 50, step: 1)
-      if changed("Base colour") {
-        let p = colourOf(base)
-        set("Hue", round(p.h)); set("Saturation", round(p.s)); set("Lightness", round(p.l))
-      }
-      if changed("Hue") || changed("Saturation") || changed("Lightness") { set("Base colour", hsl(h, s, l)) }
-    }
+// ---------- the base colour: a picker and three sliders that follow each other ----------
+// On a wide page they share a line; in a narrow column they wrap, two or one to a line.
+card("Base colour") {
+  let base = "#2f6fd0"
+  box(dir: "row", wrap: true, gap: 20, align: end) {
+    box(width: 160) { base = colour("Base colour", value: "#2f6fd0", swatches: data.presets) }
+    box(width: 220) { h = slider("Hue", 0, 360, value: 217, step: 1) }
+    box(width: 220) { s = slider("Saturation", 0, 100, value: 63, step: 1) }
+    box(width: 220) { l = slider("Lightness", 0, 100, value: 50, step: 1) }
   }
+  if changed("Base colour") {
+    let p = colourOf(base)
+    set("Hue", round(p.h)); set("Saturation", round(p.s)); set("Lightness", round(p.l))
+  }
+  if changed("Hue") || changed("Saturation") || changed("Lightness") { set("Base colour", hsl(h, s, l)) }
+}
 
-  // ---------- the palette: a harmony of the base, nudged by the seed, locks kept ----------
-  box(width: fill) {
-    card("Palette") {
-      let modeName = ""
-      box(dir: "row", gap: 12, align: center) {
-        box(width: 490) { modeName = choice("Harmony", data.modes.map(m => m.name), style: segmented) }
-        if button("Regenerate", key: "space").clicked { set("seed", seed + 1) }
-      }
-      let off = data.modes.find(m => m.name == modeName).offsets
-      let raw = [
-        [h, s, l],
-        [h + off[1], s * 0.85, clamp(l, 35, 60)],
-        [h + off[2], clamp(s + 15, 0, 95), clamp(l + 6, 40, 65)],
-        [h, s * 0.12, 42],
-        [h, s * 0.25, 97],
-      ]
-      // the base is never nudged; the others move by up to ±15° hue, ±12 saturation, ±8 lightness
-      let jit = (i, k, span) => i == 0 || seed == 0 ? 0 : round((random(seed, i * 3 + k) - 0.5) * span)
-      pal = data.roles.map((r, i) => lockOf(r) ?? hsl(raw[i][0] + jit(i, 0, 30), clamp(raw[i][1] + jit(i, 1, 24), 0, 100), clamp(raw[i][2] + jit(i, 2, 16), 0, 100)))
+// ---------- the palette: a harmony of the base, nudged by the seed, locks kept ----------
+card("Palette") {
+  let modeName = ""
+  box(dir: "row", wrap: true, gap: 12, align: end) {
+    modeName = choice("Harmony", data.modes.map(m => m.name), style: segmented)
+    if button("Regenerate", key: "space").clicked { set("seed", seed + 1) }
+  }
+  let off = data.modes.find(m => m.name == modeName).offsets
+  let raw = [
+    [h, s, l],
+    [h + off[1], s * 0.85, clamp(l, 35, 60)],
+    [h + off[2], clamp(s + 15, 0, 95), clamp(l + 6, 40, 65)],
+    [h, s * 0.12, 42],
+    [h, s * 0.25, 97],
+  ]
+  // the base is never nudged; the others move by up to ±15° hue, ±12 saturation, ±8 lightness
+  let jit = (i, k, span) => i == 0 || seed == 0 ? 0 : round((random(seed, i * 3 + k) - 0.5) * span)
+  pal = data.roles.map((r, i) => lockOf(r) ?? hsl(raw[i][0] + jit(i, 0, 30), clamp(raw[i][1] + jit(i, 1, 24), 0, 100), clamp(raw[i][2] + jit(i, 2, 16), 0, 100)))
 
-      box(dir: "row", gap: 10) {
-        for r in data.roles {
-          let c = pal[index]
-          let on = inkOn(c)
-          let sw = box(id: "sw-{r}", width: fill, height: 150, radius: 14, background: c, padding: [8, 12, 10, 12],
-            border: r == scaleRole ? 3 : 1, borderColor: r == scaleRole ? ink : border, hover: {borderColor: ink}, tip: "Copy {c}") {
-            box(dir: "row", justify: between, height: 74) {
-              box(width: 10)
-              let lk = box(id: "lock-{r}", width: 30, height: 30, radius: 8, padding: [5, 6],
-                background: lockOf(r) ? fade(INK, 0.45) : fade("#ffffff", 0.25), tip: lockOf(r) ? "Unlock" : "Lock") {
-                text(lockOf(r) ? "🔒" : "🔓", size: sm)
-              }
-              if lk.clicked { set("locks", lockOf(r) ? locks.filter(x => x.role != r) : [...locks, {role: r, hex: c}]) }
-            }
-            text(r, size: sm, weight: bold, color: on)
-            text(c, face: mono, weight: bold, color: on)
+  // five swatches to a line where the column has room for their names, three on a phone (page.width)
+  let across = page.width >= 520 ? 5 : 3
+  let swW = floor((page.width - 28 - 10 * (across - 1)) / across)
+  box(dir: "row", wrap: true, gap: 10) {
+    for r in data.roles {
+      let c = pal[index]
+      let on = inkOn(c)
+      let sw = box(id: "sw-{r}", width: swW, height: 150, radius: 14, background: c, padding: [8, 12, 10, 12],
+        border: r == scaleRole ? 3 : 1, borderColor: r == scaleRole ? ink : border, hover: {borderColor: ink}, tip: "Copy {c}") {
+        box(dir: "row", justify: between, height: 74) {
+          box(width: 10)
+          let lk = box(id: "lock-{r}", width: 30, height: 30, radius: 8, padding: [5, 6],
+            background: lockOf(r) ? fade(INK, 0.45) : fade("#ffffff", 0.25), tip: lockOf(r) ? "Unlock" : "Lock") {
+            text(lockOf(r) ? "🔒" : "🔓", size: sm)
           }
-          if sw.clicked { copy(c); set("scaleRole", r) }
+          if lk.clicked { set("locks", lockOf(r) ? locks.filter(x => x.role != r) : [...locks, {role: r, hex: c}]) }
         }
+        text(r, size: sm, weight: bold, color: on)
+        text(c, size: sm, face: mono, weight: bold, color: on)
       }
-      text("Click a swatch to copy its hex and see its shades. Space regenerates the unlocked ones. Regenerated {seed} time{seed == 1 ? "" : "s"}; {locks.length} locked.", size: sm, color: muted)
+      if sw.clicked { copy(c); set("scaleRole", r) }
     }
   }
+  text("Click a swatch to copy its hex and see its shades. Space regenerates the unlocked ones. Regenerated {seed} time{seed == 1 ? "" : "s"}; {locks.length} locked.", size: sm, color: muted)
 }
 let colourFor = r => pal[data.roles.indexOf(r)]
 ```
@@ -106,13 +107,16 @@ let sp = colourOf(colourFor(scaleRole))
 let scale = data.steps.map((st, i) => ({step: st, hex: hsl(sp.h, sp.s * (i < 2 ? 0.9 : 1), data.lights[i])}))
 
 text("of {scaleRole}", weight: bold, color: muted)
-box(dir: "row", gap: 0, radius: 12) {
-  for c in scale {
-    let st = box(id: "step-{c.step}", width: fill, height: 64, background: c.hex, padding: 6, gap: 14, tip: "Copy {c.hex}") {
-      text(str(c.step), size: 11, face: mono, weight: bold, color: inkOn(c.hex))
-      text(c.hex, size: 11, face: mono, color: inkOn(c.hex))
+// two strips of five, so each shade has room for its hex in a narrow column too
+for half in [scale.slice(0, 5), scale.slice(5)] {
+  box(dir: "row", gap: 0, radius: 12) {
+    for c in half {
+      let st = box(id: "step-{c.step}", width: fill, height: 64, background: c.hex, padding: 6, gap: 14, tip: "Copy {c.hex}") {
+        text(str(c.step), size: 11, face: mono, weight: bold, color: inkOn(c.hex))
+        text(c.hex, size: 11, face: mono, color: inkOn(c.hex))
+      }
+      if st.clicked { copy(c.hex) }
     }
-    if st.clicked { copy(c.hex) }
   }
 }
 ```
@@ -146,8 +150,9 @@ table(["Text \\ background", ...cols.map(b => b.n)],
 ## Preview
 
 ```bib
-box(width: fill, padding: 22, radius: 14, background: colourFor("Surface")) {
-  box(width: 440, padding: 18, gap: 8, radius: 12, background: "#ffffff", border: 1, borderColor: "#e0e2e5") {
+// the card is as wide as its text, and no wider than the column (in a row, a box takes what it needs)
+box(dir: "row", width: fill, padding: 22, radius: 14, background: colourFor("Surface")) {
+  box(padding: 18, gap: 8, radius: 12, background: "#ffffff", border: 1, borderColor: "#e0e2e5") {
     box(dir: "row") {
       box(padding: [2, 8], radius: 9999, background: colourFor("Accent")) { text("New", size: 11, weight: bold, color: inkOn(colourFor("Accent"))) }
     }

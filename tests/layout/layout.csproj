@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- How bib blocks are laid out, headless: bibmd's reader (../../src, without the window's Program.cs)
+       built a few frames at a width, and the boxes it laid out measured. In this folder:
+       dotnet run -p:BibDocRoot=<bibdoc> -p:BibuiSource=<bibui>. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>BibMd</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <IsPackable>false</IsPackable>
+    <BibDocRoot Condition="'$(BibDocRoot)' == ''">$(MSBuildThisFileDirectory)../../../bibdoc</BibDocRoot>
+    <BibuiSource Condition="'$(BibuiSource)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../bibui-bibmd'))</BibuiSource>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/**/*.cs" Exclude="../../src/Program.cs" Link="Bibmd/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../assets/fonts/*.ttf" LogicalName="%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(BibDocRoot)/src/BibDoc/BibDoc.csproj" />
+    <PackageReference Include="StbImageSharp" Version="2.30.16" />
+    <ProjectReference Include="$(BibuiSource)/bibui-core/bibui-core.csproj" />
+  </ItemGroup>
+</Project>

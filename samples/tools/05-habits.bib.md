@@ -54,40 +54,53 @@ text("Today: {fmtDate(today(), "dddd D MMMM YYYY")}", color: muted)
 ```
 
 ```bib
-// ── a year per habit: 53 weeks of 7 clickable days, months above, Mon/Wed/Fri beside
+// ── a year per habit: a month a group of week columns (a week goes with the month of its
+// Sunday), Mon/Wed/Fri beside. The months wrap, so a narrow column shows the year in lines.
 let weeks = range(weekOf(ndays - 1) + 1)
+let monthOfWeek = wk => dateParts(addDays(start, min([wk * 7 + 6 - pad, ndays - 1]))).month - 1
+let weekMonth = weeks.map(monthOfWeek)
+let monthWeeks = range(12).map(m => weeks.filter(wk => weekMonth[wk] == m))
 for hb in habits {
   let hi = index
   let done = hb.days.split("")
   card(null) {
-    box(dir: "row", gap: 28, align: center) {
-      box(width: 12, height: 12, radius: 6, background: hb.color)
-      box(width: fill) { text(hb.name, weight: bold, size: lg) }
-      stat("Current streak", current(hb.days), unit: "days")
-      stat("Longest", longest(hb.days), unit: "days")
-      stat(T < 0 ? "This month" : fmtDate(addDays(start, T), "MMMM"), monthPct(hb.days), unit: "%")
+    box(dir: "row", gap: 16, align: center) {
+      box(dir: "row", wrap: true, gap: 28, align: center, width: fill) {
+        box(dir: "row", gap: 12, align: center) {
+          box(width: 12, height: 12, radius: 6, background: hb.color)
+          text(hb.name, weight: bold, size: lg)
+        }
+        stat("Current streak", current(hb.days), unit: "days")
+        stat("Longest", longest(hb.days), unit: "days")
+        stat(T < 0 ? "This month" : fmtDate(addDays(start, T), "MMMM"), monthPct(hb.days), unit: "%")
+      }
       if button("×", style: ghost, id: "remove-{hi}").clicked { set("habits", habits.filter((x, j) => j != hi)) }
     }
-    box(width: 30 + weeks.length * 16, height: 14) {
-      layer { for m in range(12) { label(30 + weekOf(monthDay(m)) * 16, 7, fmtDate(date(data.year, m + 1, 1), "MMM"), size: 11, color: muted) } }
-    }
-    box(dir: "row", gap: 3) {
+    box(dir: "row", wrap: true, gap: 8) {
       box(width: 27, gap: 3) {
+        box(height: 16)
         for wd in ["Mon", "", "Wed", "", "Fri", "", ""] { box(height: 13) { text(wd, size: 10, color: muted) } }
       }
-      for wk in weeks {
+      for m in range(12) {
         box(gap: 3) {
-          for r in range(7) {
-            let d = wk * 7 + r - pad
-            if d < 0 || d >= ndays { box(width: 13, height: 13) }
-            else {
-              let on = done[d] == "1"
-              let c = box(id: "day-{hi}-{d}", width: 13, height: 13, radius: 3,
-                background: d > T ? null : on ? hb.color : fade(muted, 0.16),
-                border: d > T || d == T ? 1 : 0, borderColor: d == T ? ink : border,
-                hover: {borderColor: ink},
-                tip: "{dayName[d]} · {hb.name}: {d > T ? "in the future" : on ? "done" : "not done"}")
-              if c.clicked && d <= T { set("habits", habits.map((x, j) => j == hi ? {...x, days: flip(x.days, d)} : x)) }
+          box(height: 16) { text(fmtDate(date(data.year, m + 1, 1), "MMM"), size: 11, color: muted) }
+          box(dir: "row", gap: 3) {
+            for wk in monthWeeks[m] {
+              box(gap: 3) {
+                for r in range(7) {
+                  let d = wk * 7 + r - pad
+                  if d < 0 || d >= ndays { box(width: 13, height: 13) }
+                  else {
+                    let on = done[d] == "1"
+                    let c = box(id: "day-{hi}-{d}", width: 13, height: 13, radius: 3,
+                      background: d > T ? null : on ? hb.color : fade(muted, 0.16),
+                      border: d > T || d == T ? 1 : 0, borderColor: d == T ? ink : border,
+                      hover: {borderColor: ink},
+                      tip: "{dayName[d]} · {hb.name}: {d > T ? "in the future" : on ? "done" : "not done"}")
+                    if c.clicked && d <= T { set("habits", habits.map((x, j) => j == hi ? {...x, days: flip(x.days, d)} : x)) }
+                  }
+                }
+              }
             }
           }
         }
@@ -117,13 +130,12 @@ bars(range(last - 11, last + 1).filter(wk => wk >= 0).map(wk => ({
 let name = input("Name", placeholder: "e.g. Stretch for 10 minutes")
 let chosen = state("colour", data.palette[4])
 text("Colour", size: sm, color: muted)
-box(dir: "row", gap: 8, align: center) {
+box(dir: "row", wrap: true, gap: 8, align: center) {
   for c in data.palette {
     let s = box(id: "swatch-{index}", width: 26, height: 26, radius: 13, background: c,
       border: c == chosen ? 2 : 0, borderColor: ink, hover: {borderColor: muted}, tip: c)
     if s.clicked { set("colour", c) }
   }
-  box(width: 12)
   box(width: 140) {
     let any = input("Any colour", placeholder: "#rrggbb")
     if changed("Any colour") && colourOf(any) != null { set("colour", colourOf(any).hex) }

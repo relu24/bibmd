@@ -182,8 +182,9 @@ public sealed partial class App(BibuiRuntime runtime, Document doc, Images image
 
         int? clickedBlock = null;
         float docBottom = 0f;
-        // The bib blocks run as one program, once a frame, before any of them draws.
-        if (!_sourceView) _bib.Prepare(doc, _size);
+        // The bib blocks run as one program, once a frame, before any of them draws, at the width
+        // BlockView will draw them (page.width).
+        if (!_sourceView) _bib.Prepare(doc, _size, column - 2f * PadX);
         runtime.BeginParent(page);
         // Everything that scrolls, in one retained box: a block's place in it is its rect less this one's.
         Box content = runtime.BoxFromId("content");

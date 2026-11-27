@@ -66,10 +66,14 @@ fn kbd(k) { box(padding: [0, 5], radius: 4, border: 1, borderColor: border) { te
 tabs("Mode") {
   tab("Study") {
     // ── the five boxes
-    grid(columns: 5) {
+    // five across at any width: each box takes a fifth, and its words wrap in it
+    box(dir: "row", gap: 8) {
       for iv in data.intervals {
-        card("Box {index + 1}", subtitle: iv == 1 ? "every session" : "every {iv} sessions", tone: (session - 1) % iv == 0 ? accent : neutral) {
-          stat("Cards", boxes.filter(b => b == index + 1).length)
+        let due = (session - 1) % iv == 0
+        box(width: fill, padding: [10, 12], radius: 12, border: 1, borderColor: due ? accent : border, gap: 2) {
+          text("Box {index + 1}", weight: bold, size: sm)
+          text(str(boxes.filter(b => b == index + 1).length), size: xl, weight: bold, color: due ? accent : ink)
+          text(iv == 1 ? "every session" : iv == 2 ? "every 2nd" : "every {iv}th", size: sm, color: muted)
         }
       }
     }
@@ -109,18 +113,22 @@ tabs("Mode") {
 
       let knew = false
       let missed = false
-      box(dir: "row", width: fill, align: center, gap: 8) {
-        if button("← Previous", disabled: pos == 0, key: "left").clicked { set("pos", pos - 1); set("flipped", false) }
-        if button("Next →", disabled: pos == queue.length - 1, key: "right").clicked { set("pos", pos + 1); set("flipped", false) }
-        if button("Shuffle", key: "s").clicked {
-          // the sorted cards keep their places at the front; the rest are dealt again, from the clock
-          set("seed", clock())
-          set("deck", [...queue.filter(j => sorted.includes(j)), ...shuffle(open, clock())])
-          set("pos", sorted.length); set("flipped", false)
+      // the answers and the moves, each a group that goes onto a line of its own when narrow
+      box(dir: "row", wrap: true, align: center, gap: 8) {
+        box(dir: "row", align: center, gap: 8) {
+          missed = button("Didn't know", style: danger, disabled: done, key: "j").clicked
+          knew = button("Knew it", style: primary, disabled: done, key: "k").clicked
         }
-        box(width: fill)
-        missed = button("Didn't know", style: danger, disabled: done, key: "j").clicked
-        knew = button("Knew it", style: primary, disabled: done, key: "k").clicked
+        box(dir: "row", align: center, gap: 8) {
+          if button("← Previous", disabled: pos == 0, key: "left").clicked { set("pos", pos - 1); set("flipped", false) }
+          if button("Next →", disabled: pos == queue.length - 1, key: "right").clicked { set("pos", pos + 1); set("flipped", false) }
+          if button("Shuffle", key: "s").clicked {
+            // the sorted cards keep their places at the front; the rest are dealt again, from the clock
+            set("seed", clock())
+            set("deck", [...queue.filter(j => sorted.includes(j)), ...shuffle(open, clock())])
+            set("pos", sorted.length); set("flipped", false)
+          }
+        }
       }
       // ↑ and ↓ answer as well as K and J
       if !done && (knew || key("up").pressed) {
@@ -132,9 +140,12 @@ tabs("Mode") {
         set("pos", queue.indexOf(nextOpen ?? i)); set("flipped", false)
       }
     }
-    box(dir: "row", gap: 6, align: center) {
-      kbd("Space"); text("flip ·", size: sm, color: muted); kbd("←"); kbd("→"); text("previous / next ·", size: sm, color: muted)
-      kbd("K"); text("knew it ·", size: sm, color: muted); kbd("J"); text("didn't ·", size: sm, color: muted); kbd("S"); text("shuffle", size: sm, color: muted)
+    box(dir: "row", wrap: true, gap: 12, align: center) {
+      box(dir: "row", gap: 6, align: center) { kbd("Space"); text("flip", size: sm, color: muted) }
+      box(dir: "row", gap: 6, align: center) { kbd("←"); kbd("→"); text("previous / next", size: sm, color: muted) }
+      box(dir: "row", gap: 6, align: center) { kbd("K"); text("knew it", size: sm, color: muted) }
+      box(dir: "row", gap: 6, align: center) { kbd("J"); text("didn't", size: sm, color: muted) }
+      box(dir: "row", gap: 6, align: center) { kbd("S"); text("shuffle", size: sm, color: muted) }
     }
   }
 

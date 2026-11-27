@@ -175,7 +175,9 @@ row(fit: true) {
   text("{raw.length} rows", size: sm, color: muted)
   if button("Download CSV", style: primary).clicked { download(name, csv()) }
 }
-table(head, raw.map(cellsOf), id: "schedule", sort: true, height: 440,
-  align: monthly ? ["end", "start", "end", "end", "end", "end"] : ["start", "end", "end", "end", "end"],
-  widths: monthly ? [1, 2, 2, 2, 2, 2] : [1, 2, 2, 2, 2])
+// On a phone the month's number gives its room to the money, which then fits without scrolling.
+let from = monthly && page.width < 480 ? 1 : 0
+table(head.slice(from), raw.map(r => cellsOf(r).slice(from)), id: "schedule", sort: true, height: 440,
+  align: (monthly ? ["end", "start", "end", "end", "end", "end"] : ["start", "end", "end", "end", "end"]).slice(from),
+  widths: (monthly ? [1, 2, 2, 2, 2, 2] : [1, 2, 2, 2, 2]).slice(from))
 ```

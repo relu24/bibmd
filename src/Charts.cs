@@ -107,28 +107,60 @@ public sealed partial class Bib
         string? xLabel = n.Text("xLabel");
         if (named.Count < 2 && xLabel is null) return;
         runtime.Gap(6f);
+        // The legend's entries on a line with the x axis' name at its end when all fit; else the entries
+        // wrapped onto as many lines as they need, and the name on a line of its own at the end.
+        var smaller = runtime.FontInScope(Smaller);
+        var entries = named.Count >= 2 ? named : [];
+        float Entry(FrameNode m) => (m.Type == "dots" || stacks.ContainsKey(m) ? (m.Type == "dots" ? 8f : 10f) : 14f) + 6f
+            + Text.Width(runtime, m.Text("label")!, smaller) + 14f;
+        float nameWidth = xLabel is null ? 0f : Text.Width(runtime, xLabel, smaller) + 8f;
+        bool oneLine = entries.Sum(Entry) + nameWidth <= width;
         var row = runtime.BeginParent(runtime.Row().Sized(Size.Px(width)));
-        if (named.Count >= 2)
-            foreach (var m in named)
+        float used = 0f;
+        foreach (var m in entries)
+        {
+            if (used > 0f && used + Entry(m) > width)
             {
-                bool square = m.Type == "dots" || stacks.ContainsKey(m);
-                float sw = square ? (m.Type == "dots" ? 8f : 10f) : 14f, sh = square ? sw : 3f;
-                var cell = runtime.BeginParent(runtime.Column().Sized(Size.Px(sw)));
-                runtime.Spacer(Size.Px(MathF.Round(lineHeight / 2f - sh / 2f)));
-                Box swatch = runtime.Box();
-                swatch.SizeX = SemanticSize.Pixels(sw);
-                swatch.SizeY = SemanticSize.Pixels(sh);
-                swatch.Style.BackgroundColor = Colour(tones[m], UiColor.Accent);
-                swatch.Style.CornerRadius = m.Type == "dots" || !square ? sh / 2f : 2.5f;
-                runtime.EndParent(cell);
-                runtime.Gap(6f);
-                runtime.Text(m.Text("label")!, Smaller, UiColor.TextSecondary);
-                runtime.Gap(14f);
+                runtime.EndParent(row);
+                runtime.Gap(4f);
+                row = runtime.BeginParent(runtime.Row().Sized(Size.Px(width)));
+                used = 0f;
             }
+            used += Entry(m);
+            bool square = m.Type == "dots" || stacks.ContainsKey(m);
+            float sw = square ? (m.Type == "dots" ? 8f : 10f) : 14f, sh = square ? sw : 3f;
+            var cell = runtime.BeginParent(runtime.Column().Sized(Size.Px(sw)));
+            runtime.Spacer(Size.Px(MathF.Round(lineHeight / 2f - sh / 2f)));
+            Box swatch = runtime.Box();
+            swatch.SizeX = SemanticSize.Pixels(sw);
+            swatch.SizeY = SemanticSize.Pixels(sh);
+            swatch.Style.BackgroundColor = Colour(tones[m], UiColor.Accent);
+            swatch.Style.CornerRadius = m.Type == "dots" || !square ? sh / 2f : 2.5f;
+            runtime.EndParent(cell);
+            runtime.Gap(6f);
+            runtime.Text(m.Text("label")!, Smaller, UiColor.TextSecondary);
+            runtime.Gap(14f);
+        }
         if (xLabel is not null)
         {
-            runtime.Spacer(Size.Fill);
-            runtime.Text(xLabel, Smaller, UiColor.TextSecondary);
+            if (!oneLine && entries.Count > 0)
+            {
+                runtime.EndParent(row);
+                runtime.Gap(4f);
+                row = runtime.BeginParent(runtime.Row().Sized(Size.Px(width)));
+            }
+            // Each of its lines at the end (a name longer than the plot is wide wraps).
+            var names = Text.Lines(runtime, xLabel, smaller, width);
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (i > 0)
+                {
+                    runtime.EndParent(row);
+                    row = runtime.BeginParent(runtime.Row().Sized(Size.Px(width)));
+                }
+                runtime.Spacer(Size.Fill);
+                runtime.Text(names[i].End > names[i].Start ? xLabel.AsSpan(names[i].Start, names[i].End - names[i].Start) : " ", Smaller, UiColor.TextSecondary);
+            }
         }
         runtime.EndParent(row);
     }
@@ -551,8 +583,10 @@ public sealed partial class Bib
         {
             if (i > 0) runtime.Gap(6f);
             var row = runtime.BeginParent(runtime.Row());
+            // A label longer than its column wraps in it, a word too long broken: never cut off.
             var lc = runtime.BeginParent(runtime.Column().Sized(Size.Px(labelCol)));
-            runtime.Text(labels[i], Smaller, UiColor.TextSecondary);
+            foreach (var l in Text.Lines(runtime, labels[i], font, labelCol))
+                runtime.Text(l.End > l.Start ? labels[i].AsSpan(l.Start, l.End - l.Start) : " ", Smaller, UiColor.TextSecondary);
             runtime.EndParent(lc);
             runtime.Gap(12f);
             var cell = runtime.BeginParent(runtime.Column().Sized(Size.Px(track)));
@@ -667,8 +701,10 @@ public sealed partial class Bib
             var row = runtime.BeginParent(runtime.Row());
             Swatch(tones[i], lineHeight);
             runtime.Gap(8f);
+            // A label longer than its column wraps in it, a word too long broken: never cut off.
             var lc = runtime.BeginParent(runtime.Column().Sized(Size.Px(labelCol)));
-            runtime.Text(labels[i], Smaller, UiColor.TextSecondary);
+            foreach (var l in Text.Lines(runtime, labels[i], font, labelCol))
+                runtime.Text(l.End > l.Start ? labels[i].AsSpan(l.Start, l.End - l.Start) : " ", Smaller, UiColor.TextSecondary);
             runtime.EndParent(lc);
             runtime.Gap(12f);
             var ac = runtime.BeginParent(runtime.Row().Sized(Size.Px(amountCol)));

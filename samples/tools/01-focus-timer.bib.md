@@ -85,23 +85,27 @@ if alarm(sess.endsAt).rang { finish(false) }
 
 // ---- the timer ---------------------------------------------------------------
 text(fmtDate(today(), "dddd D MMMM"), color: muted)
+// The mode above the timer; the timer and the lengths side by side when the column has room.
+choice("Mode", modes, id: "mode", style: segmented)
 row {
-  box(gap: 14, padding: 20, radius: 16, border: 1, background: raised, align: center) {
-    choice("Mode", modes, id: "mode", style: segmented)
-
-    box(width: 300, height: 300, align: center, justify: center) {
+  box(gap: 14, padding: 16, radius: 16, border: 1, background: raised, align: center) {
+    // the ring at full size on a page, smaller in a note's column or on a phone (page.width)
+    let S = page.width >= 700 ? 300 : 240
+    let c = S / 2
+    let r = S * 0.41
+    box(width: S, height: S, align: center, justify: center) {
       layer {
         let a = 2 * Math.PI * frac
-        circle(150, 150, 124, color: fade(muted, 0.18), width: 14)
-        arc(150, 150, 124, 0, frac, color: tone, width: 14, cap: "round")
-        circle(150 + 124 * Math.sin(a), 150 - 124 * Math.cos(a), running ? 9 : 7, fill: tone)
+        circle(c, c, r, color: fade(muted, 0.18), width: S / 21)
+        arc(c, c, r, 0, frac, color: tone, width: S / 21, cap: "round")
+        circle(c + r * Math.sin(a), c - r * Math.cos(a), (running ? 9 : 7) * S / 300, fill: tone)
       }
-      text(mmss(left), size: 64, weight: bold, face: mono)
+      text(mmss(left), size: S >= 300 ? 64 : 52, weight: bold, face: mono)
       text(mode, caps: true, color: muted, size: sm)
     }
 
     // Four dots: the focus sessions of this round.
-    box(dir: "row", gap: 8, align: center) {
+    box(dir: "row", wrap: true, gap: 8, align: center) {
       for i in range(4) {
         box(width: 14, height: 14, radius: 7, border: 2, borderColor: danger,
             background: i < done ? danger : mode == "Focus" && i == done ? fade(danger, 0.2) : surface)

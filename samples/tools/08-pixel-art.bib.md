@@ -101,7 +101,9 @@ fn redoIt() {
 let checker = i => (i % n + floor(i / n)) % 2 == 0 ? fade(muted, 0.10) : fade(muted, 0.18)
 let painted = px.filter(c => c != "").length
 
-box(dir: "row", gap: 16) {
+// Three columns side by side on a wide page; narrower, they wrap: the canvas under the tools,
+// the palette under the canvas. The pixels are as large as the room the canvas has (page.width).
+box(dir: "row", wrap: true, gap: 16) {
   // ── left: tools, options, history ──
   box(width: 200, gap: 12) {
     card("Tools") {
@@ -124,15 +126,19 @@ box(dir: "row", gap: 16) {
   }
 
   // ── middle: the canvas, a box per pixel ──
-  let cs = n == 16 ? 30 : 15
+  // beside the tools and the palette when the page has room for all three, else a line of its own
+  let room = (page.width >= 960 ? page.width - 200 - 240 - 32 : page.width) - 30
+  let cs = Math.min(n == 16 ? 30 : 15, floor((room - (grid ? n + 1 : 0) - (mirror ? 2 : 0)) / n))
   let pitch = cs + (grid ? 1 : 0)
+  let canvasW = n * pitch + (grid ? 1 : 0) + (mirror ? 2 : 0)
   let hov = -1
   let down = null
   let up = false
   let erase = -1
-  box(width: fill, gap: 8) {
+  // a width of its own, the card's padding around the canvas, so it shares a line when there is room
+  box(width: canvasW + 30, gap: 8) {
     card("") {
-      box(width: n * pitch + (grid ? 1 : 0), gap: grid ? 1 : 0, padding: grid ? 1 : 0, background: grid ? fade(muted, 0.35) : surface, radius: 4) {
+      box(width: canvasW, gap: grid ? 1 : 0, padding: grid ? 1 : 0, background: grid ? fade(muted, 0.35) : surface, radius: 4) {
         for r in range(n) {
           box(dir: "row", gap: grid ? 1 : 0) {
             for c in range(n) {
@@ -148,7 +154,7 @@ box(dir: "row", gap: 16) {
           }
         }
       }
-      box(dir: "row", justify: between) {
+      box(dir: "row", wrap: true, gap: 12) {
         text(hov < 0 ? "–" : "x {hov % n}, y {floor(hov / n)}  {px[hov] == "" ? "transparent" : px[hov]}", size: sm, face: mono, color: muted)
         text("{n} × {n} · {painted} pixels painted", size: sm, face: mono, color: muted)
       }

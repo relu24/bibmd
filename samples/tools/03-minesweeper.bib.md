@@ -18,7 +18,13 @@ row {
   flagMode = toggle("Flag mode", value: false)
 }
 
-let L = level.startsWith("Beginner") ? {w: 9, h: 9, mines: 10, size: 38} : {w: 16, h: 16, mines: 40, size: 30}
+// The squares as large as the column lets them be, 38 px (9×9) or 30 px (16×16) at most: page.width
+// is the width the block is drawn at, so the board fits a phone as it does a page.
+let L0 = level.startsWith("Beginner") ? {w: 9, h: 9, mines: 10, most: 38} : {w: 16, h: 16, mines: 40, most: 30}
+let roomy = page.width >= 480
+let gap = roomy ? 3 : 2
+let pad = roomy ? 12 : 8
+let L = {...L0, gap, pad, size: Math.min(L0.most, floor((page.width - 2 * pad - gap * (L0.w - 1)) / L0.w))}
 let w = L.w
 let N = w * L.h
 let cells = range(N)
@@ -114,9 +120,9 @@ let cursor = state("cursor", -1)
 box(align: center) {
   // An id on the board too, so a click between squares is the board's, not the block's.
   // and the board shakes when a mine goes off.
-  box(id: "board", gap: 3, padding: 12, radius: 12, background: raised, shake: g.status == "lost") {
+  box(id: "board", gap: L.gap, padding: L.pad, radius: 12, background: raised, shake: g.status == "lost") {
     for r in range(L.h) {
-      box(dir: "row", gap: 3) {
+      box(dir: "row", gap: L.gap) {
         for c in range(r * w, r * w + w) {
           let isMine = g.mines.includes(c)
           let isFlag = g.flags.includes(c)
@@ -134,7 +140,7 @@ box(align: center) {
             if over && isMine && !isFlag { text("●", weight: bold, color: c == g.boom ? surface : ink) }
             else if over && isFlag && !isMine { text("✕", weight: bold, color: danger) }
             else if isFlag { text("⚑", weight: bold, color: "#e05a1c") }
-            else if isOpen && n > 0 { text(str(n), weight: bold, face: mono, size: lg, color: numberTone[n]) }
+            else if isOpen && n > 0 { text(str(n), weight: bold, face: mono, size: L.size >= 28 ? lg : md, color: numberTone[n]) }
           }
           if cell.clicked { act(c, flagMode) }
           if cell.rightClicked { act(c, true) }
@@ -175,7 +181,7 @@ if history.length == 0 {
   text("Finished games are listed here, with a button to replay the same field.", size: sm, color: muted)
 }
 for h in history {
-  box(dir: "row", gap: 12, align: center) {
+  box(dir: "row", wrap: true, gap: 12, align: center) {
     text(h.result == "won" ? "😎" : "😵")
     box(width: 220) { text("{h.level}, seed {h.seed}", face: mono, size: sm) }
     box(width: 80) { badge(h.result == "won" ? "cleared" : "mine", tone: h.result == "won" ? success : danger) }

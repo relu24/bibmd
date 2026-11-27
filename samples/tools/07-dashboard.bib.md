@@ -83,7 +83,7 @@ let q = ""
 let region = state("region", "")
 let tone = {North: accent, South: warning, East: success, West: "#a855f7"}
 
-box(dir: "row", gap: 16, align: end) {
+box(dir: "row", wrap: true, gap: 16, align: end) {
   box(width: 200) { from = slider("From month", 1, 12, value: 1, step: 1) }
   box(width: 200) { to = slider("To month", 1, 12, value: 12, step: 1) }
   seg = choice("Segment", ["All", "Consumer", "Business", "Education"], style: segmented)
@@ -102,7 +102,7 @@ if key("escape").pressed {
   set("orders", {...value("orders", {}), page: 1})
 }
 
-box(dir: "row", gap: 8, align: center) {
+box(dir: "row", wrap: true, gap: 8, align: center) {
   text("{data.months[lo - 1]} – {data.months[hi - 1]} 2026", weight: bold)
   if seg != "All" { badge(seg, tone: accent) }
   if needle != "" { badge("“{q.trim()}”", tone: accent) }
@@ -202,22 +202,35 @@ row {
 ```bib
 // ── the orders: click a head to sort (again to reverse), ten to a page ──
 // newest first until a head is clicked: the table has no starting sort, so the rows come sorted
-let rows = shown.slice().sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0).map(o => [
-  o.id, o.date, o.product,
+// A page wide enough has a column each for the segment, the price and the units; a narrower one
+// (a note's column, a phone) puts units and price in one cell and leaves the segment to the filter above.
+let wide = page.width >= 700
+let sorted = shown.slice().sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0)
+let rows = sorted.map(o => wide ? [
+  o.id, {text: fmtDate(o.date, "D MMM YYYY"), value: o.date}, o.product,
   {text: o.region, value: o.region, color: tone[o.region]},
   o.segment,
   {text: fmt(o.price, currency: "USD"), value: o.price},
   o.units,
+  {text: money(rev(o)), value: rev(o)},
+] : [
+  o.id, {text: fmtDate(o.date, "D MMM"), value: o.date}, o.product,
+  {text: o.region, value: o.region, color: tone[o.region]},
+  {text: "{o.units} × {fmt(o.price, 0, currency: "USD")}", value: o.units},
   {text: money(rev(o)), value: rev(o)},
 ])
 
 let t = null
 card("Orders", subtitle: "{shown.length} orders match") {
   if rows.length == 0 { text("No orders match these filters.", color: muted) }
-  else {
+  else if wide {
     t = table(["Order", "Date", "Product", "Region", "Segment", "Price", "Units", "Revenue"], rows,
       id: "orders", sort: true, page: 10, widths: [1, 1.1, 2.2, 0.9, 1, 0.9, 0.7, 1.1],
       align: ["start", "start", "start", "start", "start", "end", "end", "end"])
+  } else {
+    t = table(["Order", "Date", "Product", "Region", "Units", "Revenue"], rows,
+      id: "orders", sort: true, page: 10, widths: [1.3, 1, 2.3, 1, 1.4, 1.1],
+      align: ["start", "start", "start", "start", "end", "end"])
   }
 }
 

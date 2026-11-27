@@ -84,13 +84,16 @@ grid(columns: 4) {
 // ---------- the chart: weeks across, a row per task; the bars are boxes, so they can be dragged ----------
 let weeks = ceil((finishOff + 4) / 7) + 1
 let days = weeks * 7
-let LEFT = 210
+// The bars are boxes, so the chart has a size in px: as wide as the block is drawn (page.width),
+// the task names narrower in a narrow column.
+let LEFT = page.width >= 900 ? 210 : page.width >= 520 ? 150 : 110
 let ROW = 34
 let TOP = 46
-let DW = round(800 / days, 2)                  // px a calendar day: the bars are boxes, so the chart has a size in px
+let DW = round((page.width - LEFT - 12) / days, 2)   // px a calendar day
+let showDate = DW * 7 >= 52                    // a week wide enough to write its date in
 let X = o => LEFT + DW * o
 let rowOf = id => plan.findIndex(t => t.id == id)
-let tipOf = t => "{t.name} · {t.dur} d · {short(calOf(t.es))}{t.dur == 0 ? "" : "–" + short(calOf(t.ef - 1))} · slack {t.slack} d"
+let tipOf = t => "{t.name} · {t.owner} · {t.dur} d · {short(calOf(t.es))}{t.dur == 0 ? "" : "–" + short(calOf(t.ef - 1))} · slack {t.slack} d"
 
 row(fit: true) {
   badge("task", tone: accent)
@@ -131,7 +134,7 @@ box(width: LEFT + DW * days + 10, radius: 12, border: 1, background: raised) {
     for wk in range(weeks) {
       line(X(wk * 7), 8, X(wk * 7), H, color: border, width: 1)
       label(X(wk * 7) + 6, 16, "W{wk + 1}", size: 11, color: muted)
-      label(X(wk * 7) + 6, 31, short(wk * 7), size: 11, color: muted)
+      if showDate || wk % 2 == 0 { label(X(wk * 7) + 6, 31, short(wk * 7), size: 11, color: muted) }
     }
     // the selected row
     if sel != null && rowOf(sel) >= 0 { rect(0, TOP + rowOf(sel) * ROW, w, ROW, fill: fade(accent, 0.08)) }
@@ -165,9 +168,13 @@ box(width: LEFT + DW * days + 10, radius: 12, border: 1, background: raised) {
     let tone = t.slack == 0 ? danger : accent
     // the bars are as tall as the row and drawn in its middle: align: center does not centre a row's children across
     box(dir: "row", height: ROW) {
-      box(width: LEFT, padding: [1, 12]) {
-        text(t.name, size: sm, weight: t.slack == 0 ? bold : regular, color: ink, wrap: false)
-        text(t.owner, size: 11, color: muted, wrap: false)
+      box(width: LEFT, padding: [1, LEFT < 150 ? 8 : 12]) {
+        // in a phone's column the name has two lines of its own and the owner is in its tip
+        if LEFT < 150 { text(t.name, size: 11, weight: t.slack == 0 ? bold : regular, color: ink) }
+        else {
+          text(t.name, size: sm, weight: t.slack == 0 ? bold : regular, color: ink, wrap: false)
+          text(t.owner, size: 11, color: muted, wrap: false)
+        }
       }
       if t.dur == 0 {
         // a milestone: a diamond on its day
@@ -264,16 +271,18 @@ row(fit: true) {
 
 ```bib
 let rowBg = t => t.id == sel ? fade(accent, 0.14) : null
-table(["#", "Task", "Owner", "Days", "Start", "Finish", "Slack", ""],
-  plan.map((t, i) => [
-    {text: str(i + 1), background: rowBg(t)},
-    {text: t.dur == 0 ? "◆ {t.name}" : t.name, background: rowBg(t)},
-    t.owner, t.dur,
-    {text: fmtDate(workDate(t.es), "ddd D MMM"), value: t.es},
-    t.dur == 0 ? "–" : fmtDate(workDate(t.ef - 1), "ddd D MMM"),
-    {text: "{t.slack} d", value: t.slack},
-    {badge: t.slack == 0 ? "critical" : "slack", tone: t.slack == 0 ? danger : success}]),
-  widths: [0.4, 3, 1.6, 0.7, 1.1, 1.1, 0.8, 1], align: ["end", "start", "start", "end", "start", "start", "end", "start"])
+// On a phone the row numbers give their room to the rest.
+let numbered = page.width >= 480
+let rows = plan.map((t, i) => [
+  {text: str(i + 1), background: rowBg(t)},
+  {text: t.dur == 0 ? "◆ {t.name}" : t.name, background: rowBg(t)},
+  t.owner, t.dur,
+  {text: fmtDate(workDate(t.es), "ddd D MMM"), value: t.es},
+  t.dur == 0 ? "–" : fmtDate(workDate(t.ef - 1), "ddd D MMM"),
+  {badge: t.slack == 0 ? "critical" : "{t.slack} d", tone: t.slack == 0 ? danger : success, value: t.slack}])
+let from = numbered ? 0 : 1
+table(["#", "Task", "Owner", "Days", "Start", "Finish", "Slack"].slice(from), rows.map(r => r.slice(from)),
+  widths: [0.4, 3, 1.6, 0.7, 1.2, 1.2, 1.2].slice(from), align: ["end", "start", "start", "end", "start", "start", "start"].slice(from))
 
 text("Critical path", size: sm, weight: bold, color: muted)
 chips(crit.map(t => t.name), tone: danger)

@@ -43,5 +43,14 @@ string Doc(params string[] blocks) =>
         errors == 1 && !lines.Any(l => l.Contains("warning:")) && lines.Any(l => l.Contains("error:") && l.Contains("ease") && l.Contains(" at line 11:")), lines);
 }
 
+{
+    // A document that takes another way at a phone's width fails there: --check runs it at page.width 400 too.
+    var (lines, errors) = Check.Report(Doc("let cols = page.width < 500 ? nothing : 3\ntext(\"{cols}\")"), "narrow.bib.md");
+    Expect("--check runs the document at page.width 400 and says what fails there",
+        errors == 1 && lines.Any(l => l.Contains("error: at page.width 400") && l.Contains(" at line 7:")), lines);
+    var (wide, wideErrors) = Check.Report(Doc("text(\"{page.width}\")"), "wide.bib.md");
+    Expect("page.width is known to --check", wideErrors == 0, wide);
+}
+
 Console.WriteLine($"{passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

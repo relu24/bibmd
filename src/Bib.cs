@@ -43,10 +43,11 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
     }
 
     /// <summary>
-    /// Runs the document's bib blocks for this frame. A document whose blocks or
-    /// data changed gets a new program, keeping the values the reader gave.
+    /// Runs the document's bib blocks for this frame, at <paramref name="width"/>, the px width
+    /// its blocks are drawn at (the document reads it as page.width; a new width runs it again).
+    /// A document whose blocks or data changed gets a new program, keeping the values the reader gave.
     /// </summary>
-    public void Prepare(Document doc, int sizeIndex)
+    public void Prepare(Document doc, int sizeIndex, float width = (float)HostNow.DefaultWidth)
     {
         _sizeIndex = sizeIndex;
         _ordinal.Clear();
@@ -78,7 +79,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 sources.Add(Body(doc.Source(b)));
             }
         }
-        _frame = _program.Frame(front, dataBlocks, sources, this, hovered);
+        _frame = _program.Frame(front, dataBlocks, sources, this, hovered, MathF.Floor(width));
         if (_program.Renewed) _settling = SettleFrames;
         if (_frame is null) return;
         Ring(DateTimeOffset.Now);
@@ -192,10 +193,18 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
     private ComponentSize Larger => Sizes[Math.Min(Sizes.Length - 1, _sizeIndex + 1)];
     private float Gap => MathF.Round(runtime.FontInScope(Size0).Size * 0.6f);
 
-    private const float TabsPanelPad = 12f;   // bibui's Tabs.Panel pads its content so much on each side
+    private const float TabsPanelPad = 12f;
+
+    private const float KvGap = 12f;
+
+    // A table's column is at least as wide as its longest word, and MinColumn, unless that word is wider than ColumnCap.
+    private const float MinColumn = 48f, ColumnCap = 140f;   // between a kv's label and its value   // bibui's Tabs.Panel pads its content so much on each side
 
     // The narrowest a grid's cell and a row's child are drawn: narrower, they go onto more lines.
     private const float MinCell = 120f, MinRowCell = 240f;
+
+    // The narrowest a box with width: fill is set beside others in a row that wraps, unless it says (minWidth:).
+    private const float FillMin = 160f;
 
     // parent names the container across frames, for its boxes that appear and leave (Motion.cs).
     private void DrawAll(List<FrameNode> nodes, int k, float width, string? parent = null)
@@ -364,7 +373,10 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                         used = 0f;
                     }
                     if (used > 0f) runtime.Gap(between);
+                    // In a cell of its own, so what it draws in a column (a caption over a control) stays one.
+                    var fitCell = runtime.BeginParent(runtime.Column());
                     Draw(child, k, w);
+                    runtime.EndParent(fitCell);
                     used += (used > 0f ? between : 0f) + w;
                 }
                 runtime.EndParent(row);
@@ -405,6 +417,32 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             case "step":
                 Step(n, k, width, last: true);
                 break;
+            case "row" when n.Children.Any(c => FixedWidth(c) is not null):
+            {
+                // A child given a width in px gets it; the others share what is left of their line, each
+                // its minWidth at least (a box FillMin, anything else MinRowCell). What does not fit goes onto the next line; a child
+                // wider than the whole row keeps its width and runs past the row's edge, visibly.
+                float gap = MathF.Round(Gap * 2f);
+                var lines = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
+                bool firstLine = true;
+                foreach (var line in Lines(n.Children, width, gap, c => FixedWidth(c), c => MinWidth(c) ?? (c.Type == "box" ? FillMin : MinRowCell)))
+                {
+                    if (!firstLine) runtime.Gap(Gap);
+                    firstLine = false;
+                    var row = runtime.BeginParent(runtime.Row().Sized(Size.Fill));
+                    row.AllowOverflowX = true;
+                    for (int i = 0; i < line.Count; i++)
+                    {
+                        if (i > 0) runtime.Gap(gap);
+                        var cell = runtime.BeginParent(runtime.Column().Sized(Size.Px(line[i].Width)));
+                        Draw(line[i].Node, k, line[i].Width);
+                        runtime.EndParent(cell);
+                    }
+                    runtime.EndParent(row);
+                }
+                runtime.EndParent(lines);
+                break;
+            }
             case "row":
             {
                 // Side by side, as many to a line as fit at MinRowCell or wider (all of them on a
@@ -466,16 +504,20 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             case "kv":
             {
                 var col = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
-                foreach (var it in n.Props.GetValueOrDefault("items") as List<object?> ?? [])
+                var pairs = (n.Props.GetValueOrDefault("items") as List<object?> ?? []).OfType<Dictionary<string, object?>>().ToList();
+                // The labels take what the longest value leaves, between two fifths and three of the line;
+                // each wraps in its column, and so does a value.
+                var valueFont = runtime.FontInScope(Size0);
+                float longest = pairs.Select(p => Text.Width(runtime, Number(p.GetValueOrDefault("value")), valueFont)).DefaultIfEmpty(0f).Max();
+                float labels = MathF.Floor(Math.Clamp(width - longest - KvGap, width * 0.4f, width * 0.6f));
+                foreach (var pair in pairs)
                 {
-                    if (it is not Dictionary<string, object?> pair) continue;
                     var row = runtime.BeginParent(runtime.Row().Sized(Size.Fill));
-                    var left = runtime.BeginParent(runtime.Column().Sized(Size.Px(MathF.Floor(width * 0.4f))));
-                    runtime.Text(Values.Str(pair.GetValueOrDefault("label")), Size0, UiColor.TextSecondary);
+                    var left = runtime.BeginParent(runtime.Column().Sized(Size.Px(labels)));
+                    Wrapped(Values.Str(pair.GetValueOrDefault("label")), labels - KvGap, Size0, UiColor.TextSecondary);
                     runtime.EndParent(left);
-                    // The value wraps in the rest of the line, as long as it is.
-                    var right = runtime.BeginParent(runtime.Column().Sized(Size.Px(width - MathF.Floor(width * 0.4f))));
-                    Wrapped(Number(pair.GetValueOrDefault("value")), width - MathF.Floor(width * 0.4f), Size0, UiColor.TextPrimary);
+                    var right = runtime.BeginParent(runtime.Column().Sized(Size.Px(width - labels)));
+                    Wrapped(Number(pair.GetValueOrDefault("value")), width - labels, Size0, UiColor.TextPrimary);
                     runtime.EndParent(right);
                     runtime.EndParent(row);
                     runtime.Gap(4f);
@@ -505,7 +547,8 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 if (b.Clicked && n.Key is { } key) Click(k, key);
                 break;
             }
-            case "choice" when n.Text("style") == "segmented":
+            // Segmented, when its options fit side by side; wider than the width, a list of radio buttons.
+            case "choice" when n.Text("style") == "segmented" && SegmentsWidth(n) <= width + 1f:
             {
                 // Side by side in one outline: the same input, drawn as a segmented control.
                 Caption(n);
@@ -560,7 +603,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             case "toggle":
             {
                 bool on = Values.Truthy(n.Props.GetValueOrDefault("value"));
-                var sw = runtime.Switch("bib-" + n.Key, on, n.Text("label") ?? "");
+                var sw = runtime.Switch("bib-" + n.Key, on, n.Text("label") ?? "", maxWidth: width);
                 Claim(k, sw.Node);
                 if (sw.Clicked) Set(n, !on);
                 break;
@@ -587,6 +630,10 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 break;
         }
     }
+
+    // How wide a segmented choice's options are side by side.
+    private float SegmentsWidth(FrameNode n) =>
+        (n.Props.GetValueOrDefault("options") as List<object?> ?? []).Sum(o => Text.Width(runtime, Values.Str(o), runtime.FontInScope(Size0)) + 26f) + 4f;
 
     private static float FineStep(float range) =>
         range <= 0f ? 0f : (float)Math.Pow(10, Math.Floor(Math.Log10(range / 100.0)));
@@ -680,7 +727,10 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
 
     private string TextOf(FrameNode n) => n.Props.GetValueOrDefault("caps") is true ? (n.Text("text") ?? "").ToUpperInvariant() : n.Text("text") ?? "";
 
-    private void TextNode(FrameNode n, float width)
+    // A text wrapped at the width, its lines one under another (in a column of their own, so a row or a
+    // centring around it sets them as one); with align: center or end, or in a box that centres, each
+    // line is set in the middle or at the end of the width.
+    private void TextNode(FrameNode n, float width, bool centred = false)
     {
         var size = TextSize(n.Props.GetValueOrDefault("size"));
         var face = Face(n.Text("face"));
@@ -688,13 +738,25 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         var color = Colour(n.Props.GetValueOrDefault("color"), Tone(n, UiColor.TextPrimary));
         string text = TextOf(n);
         if (n.Props.GetValueOrDefault("wrap") is false) { runtime.Text(text, size, color, face, weight); return; }
+        string align = n.Text("align") ?? (centred ? "center" : "start");
+        bool placed = align is "center" or "end" or "right";
         var font = runtime.FontInScope(size, face);
+        width = MathF.Max(20f, width);
+        var lines = runtime.BeginParent(runtime.Column().Sized(placed ? Size.Px(width) : Size.Fit, Size.Fit));
         foreach (var para in text.Split('\n'))
         {
             if (para.Length == 0) { runtime.Text(" ", size, color, face, weight); continue; }
-            foreach (var line in Text.Lines(runtime, para, font, MathF.Max(20f, width)))
+            foreach (var line in Text.Lines(runtime, para, font, width))
+            {
+                if (!placed) { runtime.Text(para.AsSpan(line.Start, line.End - line.Start), size, color, face, weight); continue; }
+                var row = runtime.BeginParent(runtime.Row().Sized(Size.Px(width), Size.Fit));
+                runtime.Spacer(Size.Fill);
                 runtime.Text(para.AsSpan(line.Start, line.End - line.Start), size, color, face, weight);
+                if (align == "center") runtime.Spacer(Size.Fill);
+                runtime.EndParent(row);
+            }
         }
+        runtime.EndParent(lines);
     }
 
     // How wide a node wants to be, or null for one that takes what is left (width: fill, prose).
@@ -720,7 +782,9 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             }
             case "text":
                 if (n.Text("width") == "fill") return null;
-                return MathF.Min(room, Text.Width(runtime, TextOf(n), runtime.FontInScope(TextSize(n.Props.GetValueOrDefault("size")), Face(n.Text("face")))) + 1f);
+                // Measured in the regular weight: bold is drawn a little wider.
+                return MathF.Min(room, Text.Width(runtime, TextOf(n), runtime.FontInScope(TextSize(n.Props.GetValueOrDefault("size")), Face(n.Text("face"))))
+                    * (Weight(n.Text("weight")) == FontWeight.Regular ? 1f : 1.08f) + 1f);
             case "markdown" or "table" or "list" or "card" or "grid" or "steps" or "kv" or "tabs" or "plot" or "bars" or "pie" or "heatmap" or "input":
                 return null;
             default:
@@ -797,6 +861,8 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                 for (int i = 0; i < kids.Count; i++)
                 {
                     if (i > 0) runtime.Gap(gap);
+                    // A text wraps at the box's width, each of its lines centred.
+                    if (across && kids[i].Type == "text") { TextNode(kids[i], inner, centred: true); continue; }
                     if (across) runtime.BeginCenterAcross();
                     Draw(kids[i], k, across ? Want(kids[i], inner) ?? inner : inner);
                     if (across) runtime.EndCenterAcross();
@@ -818,30 +884,64 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
     // A box placed with at: is out of the flow of its parent.
     private static bool Floats(FrameNode n) => n.Type == "box" && n.Props.GetValueOrDefault("at") is List<object?> { Count: 2 };
 
+    // A box's width when it is given in px.
+    private static float? FixedWidth(FrameNode n) => n.Type == "box" ? Px(n.Props.GetValueOrDefault("width")) : null;
+
+    // The narrowest a child that fills is set beside others, when it says (minWidth:).
+    private static float? MinWidth(FrameNode n) => n.Type == "box" ? Px(n.Props.GetValueOrDefault("minWidth")) : null;
+
+    // Children set in lines across `room`: each line holds what fits, a child of a width of its own (fixed) at
+    // that width and the others at their least (least) at first; then the others share what the line has
+    // left, evenly. A child wider than the room is a line of its own, at its own width.
+    private static List<List<(FrameNode Node, float Width)>> Lines(List<FrameNode> kids, float room, float gap,
+        Func<FrameNode, float?> fixedWidth, Func<FrameNode, float> least)
+    {
+        var lines = new List<List<(FrameNode Node, float Width)>>();
+        var line = new List<FrameNode>();
+        float used = 0f;
+        void Close()
+        {
+            if (line.Count == 0) return;
+            float set = line.Sum(c => fixedWidth(c) ?? 0f) + gap * (line.Count - 1);
+            int flexible = line.Count(c => fixedWidth(c) is null);
+            float share = flexible == 0 ? 0f : MathF.Max(0f, (room - set) / flexible);
+            lines.Add(line.Select(c => (c, MathF.Floor(fixedWidth(c) ?? MathF.Max(MathF.Min(least(c), room), share)))).ToList());
+            line = [];
+            used = 0f;
+        }
+        foreach (var c in kids)
+        {
+            float w = fixedWidth(c) ?? MathF.Min(least(c), room);
+            if (line.Count > 0 && used + gap + w > room) Close();
+            used += (line.Count > 0 ? gap : 0f) + w;
+            line.Add(c);
+        }
+        Close();
+        return lines;
+    }
+
     // A row's children: each as wide as it wants, the ones that fill sharing what is left.
     private void RowOf(List<FrameNode> kids, int k, float inner, float gap, bool wrap, bool across, bool between = false)
     {
         var wants = kids.Select(c => Want(c, inner)).ToList();
         if (wrap)
         {
-            // Lines of what fits; a child that fills takes a line of its own.
-            float used = 0f;
-            var line = runtime.BeginParent(runtime.Row());
-            for (int i = 0; i < kids.Count; i++)
+            // Lines of what fits. A child that fills is set at its minWidth (FillMin by default) to find its
+            // line, and then takes what that line has left.
+            var want = kids.Select((c, i) => (c, wants[i])).ToDictionary(x => x.c, x => x.Item2);
+            bool firstLine = true;
+            foreach (var set in Lines(kids, inner, gap, c => want[c], c => MinWidth(c) ?? FillMin))
             {
-                float cw = wants[i] ?? inner;
-                if (used > 0f && used + gap + cw > inner)
+                if (!firstLine) runtime.Gap(gap);
+                firstLine = false;
+                var line = runtime.BeginParent(runtime.Row());
+                for (int i = 0; i < set.Count; i++)
                 {
-                    runtime.EndParent(line);
-                    runtime.Gap(gap);
-                    line = runtime.BeginParent(runtime.Row());
-                    used = 0f;
+                    if (i > 0) runtime.Gap(gap);
+                    Cell(set[i].Node, k, set[i].Width, across);
                 }
-                if (used > 0f) runtime.Gap(gap);
-                Cell(kids[i], k, cw, across);
-                used += (used > 0f ? gap : 0f) + cw;
+                runtime.EndParent(line);
             }
-            runtime.EndParent(line);
             return;
         }
         float fixedWidth = wants.Sum(x => x ?? 0f) + gap * Math.Max(0, kids.Count - 1);
@@ -1200,8 +1300,7 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         // widths: [1, 2, 2] shares the width in proportion; without it, equally.
         var weights = (n.Props.GetValueOrDefault("widths") as List<object?> ?? []).Select(w => Math.Max(0.1, Values.Num(w))).ToList();
         while (weights.Count < count) weights.Add(weights.Count == 0 ? 1 : weights.Average());
-        double total = weights.Take(count).Sum();
-        float[] cellWidths = weights.Take(count).Select(w => MathF.Floor((float)(width * w / total))).ToArray();
+        float[] cellWidths = ColumnWidths(columns, rows, count, weights, width, out float tableWidth);
         var align = n.Props.GetValueOrDefault("align") as List<object?> ?? [];
         bool End(int i) => Values.Str(align.ElementAtOrDefault(i)) == "end";
         // A table that sorts or pages is an input (the interpreter sorted and cut its rows): {sort, desc, page}.
@@ -1212,7 +1311,21 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
         int page = st?.GetValueOrDefault("page") is double p ? (int)p : 1;
         int pages = n.Props.GetValueOrDefault("pages") is double ps ? (int)ps : 1;
         const float CellGap = 12f;   // room between a cell's text and the next column
-        var table = runtime.BeginParent(runtime.Column().Sized(Size.Fill));
+        Box? sideways = null;
+        if (tableWidth > width)
+        {
+            sideways = runtime.BoxFromId($"bib-tscroll-{n.Key ?? k + "-" + _ids++}");
+            bool wide = sideways.ContentSize.X > sideways.Extent.X + 0.5f;
+            sideways.Claims = InteractionKinds.Clip | (wide ? InteractionKinds.ViewScrollX | InteractionKinds.ClampX : InteractionKinds.None);
+            runtime.InteractionsFor(sideways);   // asking is what moves its view by the wheel
+            if (!wide) sideways.TargetViewOffset = sideways.ViewOffset = default;
+            sideways.ChildLayoutAxis = LayoutAxis.Y;
+            sideways.SizeX = SemanticSize.Pixels(width);
+            sideways.SizeY = SemanticSize.ChildrenSum();
+            sideways.AllowOverflowX = true;
+            runtime.BeginParent(sideways);
+        }
+        var table = runtime.BeginParent(runtime.Column().Sized(Size.Px(tableWidth)));
         // Each cell wraps at its column's width, so a row is as tall as its longest cell.
         void Row(List<object?> cells, bool head)
         {
@@ -1243,11 +1356,11 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                     cell.Style.CornerRadius = 4f;
                     cell.Style.Padding = EdgeInsets.Symmetric(horizontal: 6f, vertical: 2f);
                 }
-                var line = End(i) ? runtime.BeginParent(runtime.Row().Sized(Size.Px(cellWidths[i] - CellGap - (rec?.ContainsKey("background") == true ? 12f : 0f)), Size.Fit)) : null;
-                if (line is not null) runtime.Spacer(Size.Fill);
+                float room = cellWidths[i] - CellGap - (rec?.GetValueOrDefault("background") is not null ? 12f : 0f);
                 if (rec is not null && rec.TryGetValue("badge", out var pill))
                 {
-                    var holder = runtime.BeginParent(runtime.Row());
+                    var holder = runtime.BeginParent(runtime.Row().Sized(End(i) ? Size.Px(room) : Size.Fit, Size.Fit));
+                    if (End(i)) runtime.Spacer(Size.Fill);
                     Pill(Values.Str(pill), rec.TryGetValue("tone", out var t) && t is not null ? Values.Str(t) : null);
                     runtime.EndParent(holder);
                 }
@@ -1256,10 +1369,21 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
                     string text = head ? Values.Str(v) + (by == i ? (desc ? " ▼" : " ▲") : "")
                         : Number(rec is not null ? rec.GetValueOrDefault("text") ?? rec.GetValueOrDefault("value") : v);
                     var ink = head ? UiColor.TextSecondary : rec?.GetValueOrDefault("color") is { } col ? Colour(col, UiColor.TextPrimary) : UiColor.TextPrimary;
-                    if (line is not null) runtime.Text(text, Smaller, ink, weight: head ? FontWeight.Bold : FontWeight.Regular);
-                    else Wrapped(text, cellWidths[i] - CellGap, Smaller, ink, head ? FontWeight.Bold : FontWeight.Regular);
+                    var weight = head ? FontWeight.Bold : FontWeight.Regular;
+                    if (!End(i)) Wrapped(text, room, Smaller, ink, weight);
+                    else
+                    {
+                        // Each line at the end of the cell.
+                        var font = runtime.FontInScope(Smaller);
+                        foreach (var l in Text.Lines(runtime, text, font, MathF.Max(20f, room)))
+                        {
+                            var line = runtime.BeginParent(runtime.Row().Sized(Size.Px(room), Size.Fit));
+                            runtime.Spacer(Size.Fill);
+                            runtime.Text(l.End > l.Start ? text.AsSpan(l.Start, l.End - l.Start) : " ", Smaller, ink, weight: weight);
+                            runtime.EndParent(line);
+                        }
+                    }
                 }
-                if (line is not null) runtime.EndParent(line);
                 runtime.EndParent(cell);
             }
             runtime.EndParent(row);
@@ -1286,9 +1410,11 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             runtime.EndParent(body);
             runtime.InteractionsFor(body);   // asking is what moves its view by the wheel, before the page asks
         }
+        runtime.EndParent(table);
+        if (sideways is not null) runtime.EndParent(sideways);
         if (pages > 1)
         {
-            // The pages: back, where it is, on.
+            // The pages: back, where it is, on; under the table, not scrolling with it.
             Separator.Build(runtime);
             var pager = runtime.BeginParent(runtime.Row().Sized(Size.Fill, Size.Fit));
             pager.Style.Padding = EdgeInsets.Symmetric(horizontal: 0f, vertical: 6f);
@@ -1303,7 +1429,57 @@ public sealed partial class Bib(BibuiRuntime runtime, BibProgram? shared = null)
             if (back.Clicked || next.Clicked)
                 Set(n, new Dictionary<string, object?>(st!) { ["page"] = (double)(page + (next.Clicked ? 1 : -1)) });
         }
-        runtime.EndParent(table);
+    }
+
+    // A table's columns: shared in proportion to their weights, but none narrower than its longest word (and
+    // MinColumn at least, ColumnCap at most), so a word is broken only when it is longer than that. When
+    // those least widths do not fit, each column is its least, and the table is wider than the width:
+    // it then scrolls sideways in its box.
+    private float[] ColumnWidths(List<object?> columns, List<object?> rows, int count, List<double> weights, float width, out float tableWidth)
+    {
+        const float CellGap = 12f;
+        var font = runtime.FontInScope(Smaller);
+        var least = new float[count];
+        void Words(int i, object? cell, float bold)
+        {
+            var rec = cell as Dictionary<string, object?>;
+            // A badge is one pill, as wide as its text and its padding.
+            if (rec?.GetValueOrDefault("badge") is { } pill)
+            {
+                least[i] = MathF.Max(least[i], Text.Width(runtime, Values.Str(pill), runtime.FontInScope(ComponentSize.Sm)) + 24f);
+                return;
+            }
+            string text = rec is not null ? Number(rec.GetValueOrDefault("text") ?? rec.GetValueOrDefault("value")) : Number(cell);
+            float shade = rec?.GetValueOrDefault("background") is not null ? 12f : 0f;   // a cell on a colour is padded
+            foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                least[i] = MathF.Max(least[i], Text.Width(runtime, word, font) * bold + shade);
+        }
+        for (int i = 0; i < Math.Min(count, columns.Count); i++) Words(i, columns[i], 1.06f);   // the head is bold
+        foreach (var row in rows.Take(200).OfType<List<object?>>())
+            for (int i = 0; i < Math.Min(count, row.Count); i++) Words(i, row[i], 1f);
+        for (int i = 0; i < count; i++) least[i] = Math.Clamp(MathF.Ceiling(least[i]) + CellGap + 2f, MinColumn, ColumnCap);
+        var w = weights.Take(count).ToArray();
+        if (least.Sum() >= width)
+        {
+            tableWidth = MathF.Max(width, least.Sum());
+            return least.Select(MathF.Floor).ToArray();
+        }
+        // Columns held at their least give up their share; the rest share what is left, again, until none is under.
+        var widths = new float[count];
+        var held = new bool[count];
+        for (bool again = true; again; )
+        {
+            again = false;
+            float left = width - Enumerable.Range(0, count).Where(i => held[i]).Sum(i => least[i]);
+            double weight = Enumerable.Range(0, count).Where(i => !held[i]).Sum(i => w[i]);
+            for (int i = 0; i < count; i++)
+            {
+                widths[i] = held[i] ? least[i] : (float)(left * w[i] / weight);
+                if (!held[i] && widths[i] < least[i]) { held[i] = true; again = true; }
+            }
+        }
+        tableWidth = width;
+        return widths.Select(MathF.Floor).ToArray();
     }
 
     private void List(FrameNode n, int k, float width)
@@ -1528,7 +1704,7 @@ public sealed class BibProgram
     /// data changed gets a new session, keeping the values the reader gave. Null with no bib blocks.
     /// Run again only when what it reads changed: a frame that scrolls the page draws the last run.
     /// </summary>
-    internal FrameResult? Frame(string? front, List<string> dataBlocks, List<string> sources, object place, HashSet<string> hovered)
+    internal FrameResult? Frame(string? front, List<string> dataBlocks, List<string> sources, object place, HashSet<string> hovered, double width)
     {
         if (sources.Count == 0) { Session = null; _frame = null; return null; }
         string key = (front ?? "") + "\u0001" + string.Join("\u0002", dataBlocks) + "\u0001" + string.Join("\u0002", sources);
@@ -1549,6 +1725,8 @@ public sealed class BibProgram
         _hovered[place] = hovered;
         var all = _hovered.Values.SelectMany(h => h).ToHashSet();
         if (!all.SetEquals(Session.Host.Hovered)) { Session.Host.Hovered = all; _rerun = true; }
+        // page.width in whole px, so a column that settles by a fraction does not run the program again.
+        if (width != Session.Host.Width) { Session.Host.Width = width; _rerun = true; }
         var now = DateTimeOffset.Now;
         if (_frame?.Every is { } every && (now - _ran).TotalSeconds >= every * 0.98) _rerun = true;
         if (_rerun || _frame is null)

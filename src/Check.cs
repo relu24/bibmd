@@ -4,7 +4,8 @@ namespace BibMd;
 
 /// <summary>
 /// <c>md FILE --check</c>: runs a document's bib blocks headless, as the window would, and
-/// says what is wrong where, in the file's own line numbers. Then clicks each button once,
+/// says what is wrong where, in the file's own line numbers, at bibmd's column and again at a
+/// phone's (page.width 400). Then clicks each button once,
 /// from a fresh session, and says what that click would do. For an agent writing a
 /// document: write, check, read the errors, fix. Exit 1 when anything fails.
 /// </summary>
@@ -74,6 +75,14 @@ public static class Check
             if (k >= 0 && k < sources.Count) Warn(At(k, $"{m.Groups[4].Value} at line {m.Groups[2].Value}:{m.Groups[3].Value}"));
             else Warn(w);
         }
+        // A phone's column too: a document that reads page.width may take another way there.
+        var narrow = new DocSession(sources, data);
+        narrow.Host.Width = NarrowWidth;
+        var narrowFrame = narrow.Frame();
+        for (int k = 0; k < sources.Count; k++)
+            if (narrowFrame.Errors[k] is { } e && frame.Errors[k] is null) Error($"at page.width {NarrowWidth} (a phone): " + At(k, e.Message));
+        if (narrowFrame.Steps > Budget.Limit * 0.8 && frame.Steps <= Budget.Limit * 0.8)
+            Warn($"at page.width {NarrowWidth}, the first run takes {Count(narrowFrame.Steps)} of {Count(Budget.Limit)} steps");
         // Inputs moved can cost more than their defaults: a run close to the budget is a warning.
         if (frame.Steps > Budget.Limit * 0.8)
             Warn($"the first run takes {Count(frame.Steps)} of {Count(Budget.Limit)} steps; moving an input may run out (precompute in data:, or sample fewer points)");
@@ -152,6 +161,9 @@ public static class Check
             : $"{name}: {errors} error(s), {warnings} warning(s)");
         return (output, errors);
     }
+
+    /// <summary>The width a check runs the document at a second time: a phone's column.</summary>
+    public const int NarrowWidth = 400;
 
     private static string Count(long n) => n.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
 
